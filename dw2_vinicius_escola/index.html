@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão Escolar</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,700|Inter:400,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="header">
+        <h1>Gestão Escolar</h1>
+        <input type="search" id="searchAluno" placeholder="Buscar aluno..." aria-label="Buscar aluno">
+    </header>
+    <main class="main-layout">
+        <aside class="sidebar">
+            <section class="filtros">
+                <h2>Filtros</h2>
+                <label for="turmaFiltro">Turma:</label>
+                <select id="turmaFiltro"></select>
+                <label for="statusFiltro">Status:</label>
+                <select id="statusFiltro">
+                    <option value="">Todos</option>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo</option>
+                </select>
+            </section>
+            <section class="estatisticas">
+                <h2>Estatísticas</h2>
+                <ul>
+                    <li>Total de alunos: <span id="totalAlunos">0</span></li>
+                    <li>Alunos ativos: <span id="alunosAtivos">0</span></li>
+                    <li>Por turma: <span id="alunosPorTurma">0</span></li>
+                </ul>
+            </section>
+            <button id="novoAlunoBtn">Novo Aluno</button>
+            <button id="novaMatriculaBtn">Nova Matrícula</button>
+        </aside>
+        <section class="listagem-principal" aria-live="polite">
+            <h2>Alunos</h2>
+            <table id="tabelaAlunos">
+                <caption>Lista de alunos</caption>
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Data de Nascimento</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Turma</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Alunos serão listados aqui via JS -->
+                </tbody>
+            </table>
+        </section>
+    </main>
+    <!-- Modal Novo Aluno -->
+    <div id="modalNovoAluno" class="modal" aria-hidden="true">
+        <form id="formNovoAluno">
+            <h2>Novo Aluno</h2>
+            <label for="nomeAluno">Nome*</label>
+            <input type="text" id="nomeAluno" name="nome" required minlength="3" maxlength="80">
+            <label for="dataNascimento">Data de Nascimento*</label>
+            <input type="date" id="dataNascimento" name="data_nascimento" required>
+            <label for="emailAluno">Email</label>
+            <input type="email" id="emailAluno" name="email" pattern="^[^@]+@[^@]+\.[^@]+$">
+            <label for="statusAluno">Status*</label>
+            <select id="statusAluno" name="status" required>
+                <option value="ativo">Ativo</option>
+                <option value="inativo">Inativo</option>
+            </select>
+            <label for="turmaAluno">Turma</label>
+            <select id="turmaAluno" name="turma_id">
+                <option value="">Nenhuma</option>
+                <!-- Turmas via JS -->
+            </select>
+            <button type="submit">Salvar</button>
+            <button type="button" id="fecharModalAluno">Cancelar</button>
+        </form>
+    </div>
+    <!-- Modal Nova Matrícula -->
+    <div id="modalNovaMatricula" class="modal" aria-hidden="true">
+        <form id="formNovaMatricula">
+            <h2>Nova Matrícula</h2>
+            <label for="alunoMatricula">Aluno*</label>
+            <select id="alunoMatricula" name="aluno_id" required>
+                <!-- Alunos via JS -->
+            </select>
+            <label for="turmaMatricula">Turma*</label>
+            <select id="turmaMatricula" name="turma_id" required>
+                <!-- Turmas via JS -->
+            </select>
+            <button type="submit">Matricular</button>
+            <button type="button" id="fecharModalMatricula">Cancelar</button>
+        </form>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
