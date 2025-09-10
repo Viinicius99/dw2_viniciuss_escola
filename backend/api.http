@@ -1,0 +1,49 @@
+### Health
+GET http://127.0.0.1:8000/health
+
+### Login professor
+POST http://127.0.0.1:8000/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=professor&password=prof123&grant_type=password
+
+### List turmas (use token from previous response)
+GET http://127.0.0.1:8000/turmas
+Authorization: Bearer {{access_token}}
+
+### Create turma
+POST http://127.0.0.1:8000/turmas
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "nome": "1A",
+  "capacidade": 30
+}
+
+### List alunos (filters)
+GET http://127.0.0.1:8000/alunos?search=a&status=ativo&sort=nome
+Authorization: Bearer {{access_token}}
+
+### Create aluno
+POST http://127.0.0.1:8000/alunos
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "nome": "Novo Aluno",
+  "data_nascimento": "2010-05-10",
+  "email": "novo@exemplo.com",
+  "status": "inativo",
+  "turma_id": null
+}
+
+### Matricular aluno (use ids válidos)
+POST http://127.0.0.1:8000/matriculas
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "aluno_id": 1,
+  "turma_id": 1
+}

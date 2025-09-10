@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Gestão Escolar</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-card { width: 100%; max-width: 380px; background: var(--panel-bg, #fff); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); padding: 28px; }
+    .login-card h1 { margin: 0 0 16px; font-size: 22px; }
+    .login-card .form-group { margin-bottom: 14px; }
+    .login-card label { display: block; font-weight: 600; margin-bottom: 6px; }
+    .login-card input { width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 14px; }
+    .login-card button { width: 100%; margin-top: 10px; }
+    .error { color: #b91c1c; margin-top: 10px; min-height: 20px; }
+  </style>
+  <script>
+    const API_URL = 'http://127.0.0.1:8000';
+    async function doLogin(e) {
+      e.preventDefault();
+      const form = e.target;
+      const username = form.username.value.trim();
+      const password = form.password.value;
+      const errorBox = document.getElementById('error');
+      errorBox.textContent = '';
+
+      if (!username || !password) {
+        errorBox.textContent = 'Informe usuário e senha';
+        return;
+      }
+
+      try {
+        const body = new URLSearchParams();
+        body.set('username', username);
+        body.set('password', password);
+        body.set('grant_type', 'password');
+
+        const res = await fetch(API_URL + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.detail || 'Falha no login');
+
+        const token = data.access_token;
+        localStorage.setItem('token', token);
+
+        // Buscar informações do usuário logado
+        const meRes = await fetch(API_URL + '/auth/me', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const me = await meRes.json();
+        if (!meRes.ok) throw new Error(me?.detail || 'Não foi possível obter o usuário');
+        localStorage.setItem('currentUser', JSON.stringify(me));
+
+        // Redireciona para a aplicação
+        window.location.href = 'index.html';
+      } catch (err) {
+        errorBox.textContent = err.message;
+      }
+    }
+  </script>
+  <script>
+    // Se já estiver logado, vai direto para a aplicação
+    document.addEventListener('DOMContentLoaded', () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        window.location.href = 'index.html';
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="login-card">
+    <h1>Entrar</h1>
+    <form onsubmit="doLogin(event)">
+      <div class="form-group">
+        <label for="username">Usuário</label>
+        <input id="username" name="username" type="text" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Entrar</button>
+      <div id="error" class="error" role="alert"></div>
+      <div style="margin-top:8px; color:#6b7280; font-size: 12px;">
+        Dicas: professor/prof123 · aluno/aluno123
+      </div>
+    </form>
+  </div>
+</body>
+</html>

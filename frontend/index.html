@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão Escolar</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container header-content">
+            <h1>Gestão Escolar</h1>
+            <div class="header-right">
+                <div class="search-container">
+                    <input type="search" id="searchStudent" placeholder="Buscar aluno..." aria-label="Buscar aluno">
+                </div>
+                <button id="darkModeButton" class="btn-theme" aria-label="Alternar modo claro/escuro">
+                    <svg class="sun-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 17C14.7614 17 17 14.7614 17 12C17 9.23858 14.7614 7 12 7C9.23858 7 7 9.23858 7 12C7 14.7614 9.23858 17 12 17Z" stroke="currentColor" stroke-width="2"/>
+                        <path d="M12 1V3M12 21V23M1 12H3M21 12H23M4.22 4.22L5.64 5.64M18.36 18.36L19.78 19.78M4.22 19.78L5.64 18.36M18.36 5.64L19.78 4.22" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    <svg class="moon-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                </button>
+                <button id="themeButton" class="btn-theme" aria-label="Personalizar cores">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C13.51 21 14.93 20.61 16.17 19.92C16.94 19.48 16.94 18.37 16.17 17.93C15.54 17.58 15.1 16.9 15.1 16.15C15.1 14.96 16.08 14 17.27 14H19.5C20.88 14 22 12.88 22 11.5C22 6.86 17.14 3 12 3Z" stroke="currentColor" stroke-width="2"/>
+                        <path d="M12 8C13.1046 8 14 7.10457 14 6C14 4.89543 13.1046 4 12 4C10.8954 4 10 4.89543 10 6C10 7.10457 10.8954 8 12 8Z" fill="currentColor"/>
+                        <path d="M7 14C8.10457 14 9 13.1046 9 12C9 10.8954 8.10457 10 7 10C5.89543 10 5 10.8954 5 12C5 13.1046 5.89457 14 7 14Z" fill="currentColor"/>
+                        <path d="M17 10C18.1046 10 19 9.10457 19 8C19 6.89543 18.1046 6 17 6C15.8954 6 15 6.89543 15 8C15 9.10457 15.8954 10 17 10Z" fill="currentColor"/>
+                    </svg>
+                </button>
+                <button onclick="logout()" class="btn btn-secondary" style="margin-left:8px">Sair</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Modal de Cores -->
+    <div id="colorPickerModal" class="modal">
+        <div class="modal-content color-picker-modal">
+            <h2>Personalizar Cores</h2>
+            <div class="color-picker-container">
+                <div class="color-section">
+                    <h3>Cor Primária</h3>
+                    <div class="color-variations" id="primaryColors"></div>
+                </div>
+                <div class="color-section">
+                    <h3>Cor Secundária</h3>
+                    <div class="color-variations" id="secondaryColors"></div>
+                </div>
+                <div class="color-section">
+                    <h3>Cor de Destaque</h3>
+                    <div class="color-variations" id="accentColors"></div>
+                </div>
+                <div class="color-section custom-background">
+                    <h3>Cor de Fundo Personalizada</h3>
+                    <div class="color-wheel-container">
+                        <div class="color-wheel-wrapper">
+                            <canvas id="colorWheel" width="200" height="200"></canvas>
+                            <div id="colorIndicator" class="color-picker-indicator"></div>
+                        </div>
+                        <div class="color-wheel-controls">
+                            <div class="color-preview-box">
+                                <div id="colorPreview"></div>
+                                <input type="text" id="colorValue" readonly>
+                            </div>
+                            <div class="brightness-control">
+                                <label for="brightness">Brilho:</label>
+                                <input type="range" id="brightness" min="0" max="100" value="100">
+                            </div>
+                            <button class="btn btn-primary" id="applyBackground">Aplicar Cor de Fundo</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="color-preview">
+                    <h3>Visualização</h3>
+                    <div class="preview-elements">
+                        <button class="btn btn-primary">Botão Primário</button>
+                        <button class="btn btn-secondary">Botão Secundário</button>
+                        <button class="btn btn-accent">Botão Destaque</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('colorPickerModal')">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveColorTheme()">Salvar Tema</button>
+            </div>
+        </div>
+    </div>
+
+    <main class="container main-content">
+        <aside class="sidebar">
+            <div class="filters">
+                <h2>Filtros</h2>
+                <div class="filter-group">
+                    <label for="classFilter">Turma:</label>
+                    <select id="classFilter">
+                        <option value="">Todas as turmas</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="statusFilter">Status:</label>
+                    <select id="statusFilter">
+                        <option value="">Todos</option>
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="ageFilter">Faixa Etária:</label>
+                    <select id="ageFilter">
+                        <option value="">Todas as idades</option>
+                        <option value="5-7">5 a 7 anos</option>
+                        <option value="8-10">8 a 10 anos</option>
+                        <option value="11-13">11 a 13 anos</option>
+                        <option value="14+">14+ anos</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="statistics">
+                <h2>Estatísticas</h2>
+                <div class="stat-item">
+                    <span>Total de Alunos:</span>
+                    <strong id="totalStudents">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Alunos Ativos:</span>
+                    <strong id="activeStudents">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Turmas Disponíveis:</span>
+                    <strong id="totalClasses">10</strong>
+                </div>
+                <div class="stat-item">
+                    <span>Transferências Hoje:</span>
+                    <strong id="transfersToday">0</strong>
+                </div>
+            </div>
+        </aside>
+
+        <section class="content">
+            <div class="actions">
+                <button id="newStudentBtn" class="btn btn-primary">Novo Aluno</button>
+                <button id="exportBtn" class="btn btn-accent">Exportar Dados</button>
+            </div>
+
+            <div class="table-container">
+                <table class="students-table">
+                    <caption>Lista de Alunos</caption>
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Idade</th>
+                            <th>Email</th>
+                            <th>Turma</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentsList">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Novo Aluno -->
+    <div id="newStudentModal" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <h2>Novo Aluno</h2>
+            <form id="studentForm">
+                <div class="form-group">
+                    <label for="studentName">Nome*:</label>
+                    <input type="text" id="studentName" required minlength="3" maxlength="80">
+                </div>
+                <div class="form-group">
+                    <label for="birthDate">Data de Nascimento*:</label>
+                    <input type="date" id="birthDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$">
+                </div>
+                <div class="form-group">
+                    <label for="status">Status*:</label>
+                    <select id="status" required>
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="classId">Turma:</label>
+                    <select id="classId">
+                        <option value="">Selecione uma turma</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('newStudentModal')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Transferir Aluno -->
+    <div id="transferStudentModal" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <h2>Transferir Aluno</h2>
+            <div id="transferStudentInfo" class="transfer-info">
+                <p><strong>Aluno:</strong> <span id="transferStudentName"></span></p>
+                <p><strong>Turma Atual:</strong> <span id="currentClass"></span></p>
+            </div>
+            <form id="transferForm">
+                <div class="form-group">
+                    <label for="newClassId">Nova Turma*:</label>
+                    <select id="newClassId" required>
+                        <option value="">Selecione a nova turma</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="transferReason">Motivo da Transferência:</label>
+                    <textarea id="transferReason" placeholder="Descreva o motivo da transferência (opcional)" rows="3"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('transferStudentModal')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Confirmar Transferência</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="feedback" class="feedback" role="alert" aria-live="polite"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
