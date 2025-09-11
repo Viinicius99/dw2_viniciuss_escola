@@ -6,20 +6,75 @@ let students = [];
 let transfersToday = 0;
 let classes = [];
 
+// Sistema de Login
+async function doLogin(username, password) {
+  try {
+    const body = new URLSearchParams();
+    body.set('username', username);
+    body.set('password', password);
+    body.set('grant_type', 'password');
+
+    const res = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.detail || 'Falha no login');
+
+    token = data.access_token;
+    localStorage.setItem('token', token);
+
+    // Buscar informações do usuário logado
+    const meRes = await fetch(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const me = await meRes.json();
+    if (!meRes.ok) throw new Error(me?.detail || 'Não foi possível obter o usuário');
+    
+    currentUser = me;
+    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    
+    return true;
+  } catch (err) {
+    throw err;
+  }
+}
+
+function showLogin() {
+  document.getElementById('loginModal').style.display = 'flex';
+  document.getElementById('mainContent').style.display = 'none';
+  document.querySelector('header').style.display = 'none';
+}
+
+function hideLogin() {
+  document.getElementById('loginModal').style.display = 'none';
+  document.getElementById('mainContent').style.display = 'block';
+  document.querySelector('header').style.display = 'block';
+}
+
 // Util: chamadas HTTP
 async function fetchJSON(path, options = {}) {
   if (!token) {
-    // Sem token, manda para login
-    window.location.href = 'login.html';
-    return Promise.reject(new Error('Não autenticado'));
+    showLogin();
+    throw new Error('Não autenticado');
   }
+  
   const res = await fetch(`${API_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(options.headers || {}) },
     ...options,
   });
+  
   const isJSON = res.headers.get('content-type')?.includes('application/json');
   const data = isJSON ? await res.json() : null;
+  
   if (!res.ok) {
+    if (res.status === 401) {
+      // Token inválido, fazer logout
+      logout();
+      throw new Error('Sessão expirada');
+    }
     const msg = data?.detail || data?.message || `Erro ${res.status}`;
     throw new Error(msg);
   }
@@ -115,51 +170,55 @@ async function postMatriculaApi(alunoId, turmaId) {
 
 async function loadInitialData() {
   try {
-    // Carregar usuário logado
+    // Carregar usuário logado se já tiver token válido
     if (!token) {
-      window.location.href = 'login.html';
-      return;
-    }
-    const meRes = await fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-    if (meRes.ok) {
-      currentUser = await meRes.json();
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('token');
-      window.location.href = 'login.html';
+      showLogin();
       return;
     }
 
+    try {
+      const meRes = await fetch(`${API_URL}/auth/me`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      
+      if (meRes.ok) {
+        currentUser = await meRes.json();
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      } else {
+        // Token inválido
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentUser');
+        token = null;
+        showLogin();
+        return;
+      }
+    } catch (err) {
+      console.error('Erro ao verificar usuário:', err);
+      showLogin();
+      return;
+    }
+
+    // Carregar dados da aplicação
     await getTurmas();
     if (currentUser?.role === 'aluno' && currentUser?.turma_id) {
       await getAlunos({ turma_id: currentUser.turma_id });
     } else {
       await getAlunos();
     }
+    
     recomputeClassOccupancy();
     populateClassSelect();
     updateClassOccupancy();
     renderStudents(students);
     updateStatistics();
     applyRoleRestrictions();
+    hideLogin();
+    
   } catch (err) {
     console.error(err);
     showFeedback(`Erro ao carregar dados: ${err.message}`, 'error');
   }
 }
-
-// Elementos do DOM
-const studentsList = document.getElementById('studentsList');
-const searchInput = document.getElementById('searchStudent');
-const classFilter = document.getElementById('classFilter');
-const statusFilter = document.getElementById('statusFilter');
-const ageFilter = document.getElementById('ageFilter');
-const newStudentBtn = document.getElementById('newStudentBtn');
-const exportBtn = document.getElementById('exportBtn');
-const studentForm = document.getElementById('studentForm');
-const feedback = document.getElementById('feedback');
-const themeButton = document.getElementById('themeButton');
-const darkModeButton = document.getElementById('darkModeButton');
 
 // Gerenciamento do tema
 let isDarkMode = localStorage.getItem('darkMode') === 'true';
@@ -470,7 +529,10 @@ function updateClassOccupancy() {
 // Populate class select dropdowns with grouped options
 defaultOptionText = 'Selecione uma turma';
 function populateClassSelect() {
-  const classSelects = [classFilter, document.getElementById('classId')];
+  const classFilter = document.getElementById('classFilter');
+  const classIdSelect = document.getElementById('classId');
+  const classSelects = [classFilter, classIdSelect].filter(Boolean);
+  
   const getGradeLabel = (name) => {
     const match = name.match(/^(\d+)/);
     const n = match ? match[1] : null;
@@ -515,16 +577,52 @@ function populateClassSelect() {
 
 // Configura os eventos da aplicação
 function setupEventListeners() {
+  // Setup do formulário de login
+  const loginForm = document.getElementById('loginForm');
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const errorDiv = document.getElementById('loginError');
+      
+      errorDiv.textContent = '';
+
+      if (!username || !password) {
+        errorDiv.textContent = 'Informe usuário e senha';
+        return;
+      }
+
+      try {
+        await doLogin(username, password);
+        document.getElementById('loginForm').reset();
+        await loadInitialData();
+        showFeedback('Login realizado com sucesso!');
+      } catch (err) {
+        errorDiv.textContent = err.message;
+      }
+    });
+  }
+
   // Eventos de filtro
-  searchInput.addEventListener('input', filterStudents);
-  classFilter.addEventListener('change', filterStudents);
-  statusFilter.addEventListener('change', filterStudents);
-  ageFilter.addEventListener('change', filterStudents);
+  const searchInput = document.getElementById('searchStudent');
+  const classFilter = document.getElementById('classFilter');
+  const statusFilter = document.getElementById('statusFilter');
+  const ageFilter = document.getElementById('ageFilter');
+  
+  if (searchInput) searchInput.addEventListener('input', filterStudents);
+  if (classFilter) classFilter.addEventListener('change', filterStudents);
+  if (statusFilter) statusFilter.addEventListener('change', filterStudents);
+  if (ageFilter) ageFilter.addEventListener('change', filterStudents);
 
   // Eventos de cadastro e manipulação
-  newStudentBtn.addEventListener('click', () => openModal('newStudentModal'));
-  studentForm.addEventListener('submit', handleStudentSubmit);
-  exportBtn.addEventListener('click', exportData);
+  const newStudentBtn = document.getElementById('newStudentBtn');
+  const studentForm = document.getElementById('studentForm');
+  const exportBtn = document.getElementById('exportBtn');
+  
+  if (newStudentBtn) newStudentBtn.addEventListener('click', () => openModal('newStudentModal'));
+  if (studentForm) studentForm.addEventListener('submit', handleStudentSubmit);
+  if (exportBtn) exportBtn.addEventListener('click', exportData);
 
   // Evento de transferência
   const transferForm = document.getElementById('transferForm');
@@ -533,11 +631,16 @@ function setupEventListeners() {
   }
 
   // Eventos de tema
-  themeButton.addEventListener('click', () => {
-    setupColorPicker();
-    openModal('colorPickerModal');
-  });
-  darkModeButton.addEventListener('click', toggleDarkMode);
+  const themeButton = document.getElementById('themeButton');
+  const darkModeButton = document.getElementById('darkModeButton');
+  
+  if (themeButton) {
+    themeButton.addEventListener('click', () => {
+      setupColorPicker();
+      openModal('colorPickerModal');
+    });
+  }
+  if (darkModeButton) darkModeButton.addEventListener('click', toggleDarkMode);
 }
 
 // Setup color picker
@@ -617,6 +720,13 @@ function loadSavedTheme() {
 
 // Filter students based on search, class, status, and age
 function filterStudents() {
+  const searchInput = document.getElementById('searchStudent');
+  const classFilter = document.getElementById('classFilter');
+  const statusFilter = document.getElementById('statusFilter');
+  const ageFilter = document.getElementById('ageFilter');
+  
+  if (!searchInput || !classFilter || !statusFilter || !ageFilter) return;
+  
   const searchTerm = searchInput.value.toLowerCase();
   const classId = classFilter.value;
   const status = statusFilter.value;
@@ -655,6 +765,9 @@ function filterStudents() {
 
 // Render students table
 function renderStudents(studentsToRender) {
+  const studentsList = document.getElementById('studentsList');
+  if (!studentsList) return;
+  
   studentsList.innerHTML = '';
   studentsToRender.forEach(student => {
     const row = document.createElement('tr');
@@ -936,6 +1049,9 @@ async function deleteStudent(id) {
 
 // Feedback functions
 function showFeedback(message, type = 'success') {
+  const feedback = document.getElementById('feedback');
+  if (!feedback) return;
+  
   feedback.textContent = message;
   feedback.className = `feedback active ${type}`;
   feedback.setAttribute('role', 'alert');
@@ -963,6 +1079,7 @@ function applyRoleRestrictions() {
     const newStudentBtn = document.getElementById('newStudentBtn');
     if (newStudentBtn) newStudentBtn.style.display = 'none';
     // Filtro de turma travado
+    const classFilter = document.getElementById('classFilter');
     if (classFilter) {
       classFilter.disabled = true;
       // Se tiver turma, já estará filtrado pelos dados carregados
@@ -970,9 +1087,12 @@ function applyRoleRestrictions() {
   }
 }
 
-// Logout utilitário (opcional, chame via console)
+// Logout utilitário
 function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('currentUser');
-  window.location.href = 'login.html';
+  token = null;
+  currentUser = null;
+  showLogin();
+  showFeedback('Logout realizado com sucesso');
 }

@@ -90,7 +90,31 @@
         </div>
     </div>
 
-    <main class="container main-content">
+    <!-- Modal de Login -->
+    <div id="loginModal" class="modal login-modal" style="display: none;">
+        <div class="modal-content login-card">
+            <h2>Login - Gestão Escolar</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginUsername">Usuário:</label>
+                    <input type="text" id="loginUsername" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Senha:</label>
+                    <input type="password" id="loginPassword" required autocomplete="current-password">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Entrar</button>
+                </div>
+                <div id="loginError" class="error" role="alert"></div>
+                <div style="margin-top: 12px; color: #6b7280; font-size: 12px;">
+                    Dicas: professor/prof123 · aluno/aluno123
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <main class="container main-content" id="mainContent" style="display: none;">
         <aside class="sidebar">
             <div class="filters">
                 <h2>Filtros</h2>
@@ -230,7 +254,7 @@
                 </div>
             </form>
         </div>
-    </div>
+    </main>
 
     <div id="feedback" class="feedback" role="alert" aria-live="polite"></div>
 
