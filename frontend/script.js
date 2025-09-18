@@ -1,5 +1,5 @@
 // Estado sincronizado com a API (FastAPI)
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'http://127.0.0.1:8002';
 let token = localStorage.getItem('token') || null;
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 let students = [];
@@ -127,6 +127,10 @@ function showLogin() {
   if (loginModal) {
     loginModal.style.display = 'flex';
   }
+  
+  // Limpar erros anteriores
+  const errorDiv = document.getElementById('loginError');
+  if (errorDiv) errorDiv.textContent = '';
 }
 
 function hideLogin() {
@@ -138,13 +142,8 @@ function hideLogin() {
 
 // Util: chamadas HTTP
 async function fetchJSON(path, options = {}) {
-  if (!token) {
-    showLogin();
-    throw new Error('Não autenticado');
-  }
-  
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
   
@@ -280,14 +279,94 @@ async function postMatriculaApi(alunoId, turmaId) {
 async function loadInitialData() {
   console.log('=== INICIANDO APLICAÇÃO ===');
   
-  // Carregar dados diretamente, sem verificar token
-  console.log('Carregando dados...');
+  // Carregar dados normalmente primeiro (comportamento original)
+  await carregarTudo();
+  
+  // Se tem token válido, aplicar restrições de usuário
+  if (token && currentUser) {
+    try {
+      const userRes = await fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (userRes.ok) {
+        console.log('Usuário já logado:', currentUser);
+        updateUserInfo();
+        applyRoleRestrictions();
+        return;
+      } else {
+        // Token inválido, limpar
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentUser');
+        token = null;
+        currentUser = null;
+      }
+    } catch (err) {
+      console.log('Erro ao verificar token:', err);
+      localStorage.removeItem('token');
+      localStorage.removeItem('currentUser');
+      token = null;
+      currentUser = null;
+    }
+  }
+}
+
+// Nova função para carregar dados baseado no tipo de usuário
+async function carregarDadosComBaseNoUsuario() {
   try {
-    await carregarTudo();
+    console.log('=== CARREGANDO DADOS BASEADO NO USUÁRIO ===');
+    console.log('Usuário atual:', currentUser);
+    
+    // Carregar turmas (sempre necessário)
+    const turmasRes = await fetch(`${API_URL}/turmas`);
+    if (turmasRes.ok) {
+      const turmasAPI = await turmasRes.json();
+      classes = Array.isArray(turmasAPI) ? turmasAPI.map(t => ({
+        id: t.id,
+        name: t.nome,
+        capacity: t.capacidade,
+        occupied: 0
+      })) : [];
+      console.log('Turmas carregadas:', classes.length);
+    }
+    
+    // Carregar alunos baseado no papel do usuário
+    let alunosUrl = `${API_URL}/alunos`;
+    
+    // Se for aluno, carregar apenas da sua turma
+    if (currentUser?.role === 'aluno' && currentUser?.turma_id) {
+      alunosUrl += `?turma_id=${currentUser.turma_id}`;
+      console.log('Carregando apenas alunos da turma:', currentUser.turma_id);
+    } else {
+      console.log('Carregando todos os alunos (professor)');
+    }
+    
+    const alunosRes = await fetch(alunosUrl);
+    if (alunosRes.ok) {
+      const alunosAPI = await alunosRes.json();
+      students = Array.isArray(alunosAPI) ? alunosAPI.map(a => ({
+        id: a.id,
+        name: a.nome,
+        birthDate: a.data_nascimento,
+        email: a.email || '',
+        status: a.status,
+        classId: a.turma_id
+      })) : [];
+      console.log('Alunos carregados:', students.length);
+    }
+    
+    // Atualizar interface
+    recomputeClassOccupancy();
+    populateClassSelect();
+    updateClassOccupancy();
+    renderStudents(students);
+    updateStatistics();
+    
+    showFeedback(`Bem-vindo(a), ${currentUser.username}! ${students.length} alunos carregados.`, 'success');
+    
   } catch (err) {
-    console.log('Erro ao carregar dados iniciais:', err.message);
-    // Se falhar, carregar dados locais mesmo assim
-    carregarDadosLocais();
+    console.error('Erro ao carregar dados:', err);
+    showFeedback('Erro ao carregar dados. Verifique se o backend está rodando.', 'error');
   }
 }
 
@@ -595,6 +674,7 @@ function init() {
   setupEventListeners();
   loadSavedTheme();
   initColorWheel();
+  updateUserInfo(); // Configurar botões login/logout
   // Carrega dados automaticamente ao iniciar
   loadInitialData();
 }
@@ -684,8 +764,10 @@ function setupEventListeners() {
 
       try {
         await doLogin(username, password);
-        await carregarTudo();
         document.getElementById('loginForm').reset();
+        hideLogin();
+        updateUserInfo();
+        applyRoleRestrictions();
         showFeedback('Login realizado com sucesso!');
       } catch (err) {
         errorDiv.textContent = err.message;
@@ -1204,9 +1286,18 @@ function applyRoleRestrictions() {
 // Atualiza informações do usuário no header
 function updateUserInfo() {
   const userInfo = document.getElementById('userInfo');
-  if (userInfo && currentUser) {
+  const logoutBtn = document.getElementById('logoutBtn');
+  const loginBtn = document.getElementById('loginBtn');
+  
+  if (currentUser) {
     const roleText = currentUser.role === 'professor' ? 'Professor' : 'Aluno';
-    userInfo.textContent = `Logado como: ${roleText} (${currentUser.username})`;
+    if (userInfo) userInfo.textContent = `Logado como: ${roleText} (${currentUser.username})`;
+    if (logoutBtn) logoutBtn.style.display = 'inline-block';
+    if (loginBtn) loginBtn.style.display = 'none';
+  } else {
+    if (userInfo) userInfo.textContent = '';
+    if (logoutBtn) logoutBtn.style.display = 'none';
+    if (loginBtn) loginBtn.style.display = 'inline-block';
   }
 }
 
@@ -1216,18 +1307,20 @@ function logout() {
   localStorage.removeItem('currentUser');
   token = null;
   currentUser = null;
-  students = [];
-  classes = [];
   
-  // Limpar interface
-  const studentsList = document.getElementById('studentsList');
-  if (studentsList) studentsList.innerHTML = '';
+  // Resetar interface para mostrar todos os dados novamente
+  updateUserInfo();
   
-  const userInfo = document.getElementById('userInfo');
-  if (userInfo) userInfo.textContent = '';
+  // Remover restrições de aluno se houver
+  const newStudentBtn = document.getElementById('newStudentBtn');
+  if (newStudentBtn) newStudentBtn.style.display = 'inline-block';
   
-  updateStatistics();
-  showLogin();
+  const classFilter = document.getElementById('classFilter');
+  if (classFilter) classFilter.disabled = false;
+  
+  // Recarregar dados completos
+  carregarTudo();
+  
   showFeedback('Logout realizado com sucesso');
 }
 
@@ -1251,3 +1344,8 @@ function trocarUsuario() {
   showLogin();
   showFeedback('Selecione outro usuário para entrar');
 }
+
+// Inicializa a aplicação quando o documento estiver carregado
+document.addEventListener('DOMContentLoaded', function () {
+  init();
+});
