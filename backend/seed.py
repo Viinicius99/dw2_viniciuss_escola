@@ -6,8 +6,8 @@ import random
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal, init_db
-from .models import Aluno, Turma, User
+from database import SessionLocal, init_db
+from models import Aluno, Turma, User
 from .app import get_password_hash
 
 

@@ -4,7 +4,7 @@ from datetime import date
 from sqlalchemy import Date, ForeignKey, Integer, String, CheckConstraint, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .database import Base
+from database import Base
 
 
 class Turma(Base):

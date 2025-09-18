@@ -1,57 +1,139 @@
 // Estado sincronizado com a API (FastAPI)
 const API_URL = 'http://127.0.0.1:8000';
 let token = localStorage.getItem('token') || null;
-let currentUser = null;
+let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 let students = [];
 let transfersToday = 0;
 let classes = [];
 
-// Sistema de Login
+// Sistema de Login SIMPLIFICADO
 async function doLogin(username, password) {
   try {
-    const body = new URLSearchParams();
-    body.set('username', username);
-    body.set('password', password);
-    body.set('grant_type', 'password');
-
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
+      body: `username=${username}&password=${password}&grant_type=password`,
     });
     
+    if (!res.ok) {
+      throw new Error('Login falhou');
+    }
+    
     const data = await res.json();
-    if (!res.ok) throw new Error(data?.detail || 'Falha no login');
-
     token = data.access_token;
     localStorage.setItem('token', token);
 
-    // Buscar informações do usuário logado
-    const meRes = await fetch(`${API_URL}/auth/me`, {
+    // Buscar usuário
+    const userRes = await fetch(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-    const me = await meRes.json();
-    if (!meRes.ok) throw new Error(me?.detail || 'Não foi possível obter o usuário');
     
-    currentUser = me;
-    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    if (userRes.ok) {
+      currentUser = await userRes.json();
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    }
     
     return true;
   } catch (err) {
-    throw err;
+    throw new Error('Usuário ou senha incorretos');
+  }
+}
+
+// Função SIMPLES para carregar dados DO BANCO
+async function carregarTudo() {
+  try {
+    console.log('=== CARREGANDO DADOS DO BANCO ===');
+    console.log('API_URL:', API_URL);
+    
+    let carregouDaAPI = false;
+    
+    // Tentar carregar do banco sem token (se o backend permitir)
+    try {
+      // Carregar turmas do banco
+      console.log('Fazendo fetch para turmas...');
+      const turmasRes = await fetch(`${API_URL}/turmas`);
+      console.log('Response turmas status:', turmasRes.status);
+      
+      if (turmasRes.ok) {
+        const turmasAPI = await turmasRes.json();
+        console.log('Turmas API response:', turmasAPI);
+        classes = Array.isArray(turmasAPI) ? turmasAPI.map(t => ({
+          id: t.id,
+          name: t.nome,
+          capacity: t.capacidade,
+          occupied: 0
+        })) : [];
+        console.log('Turmas carregadas do banco:', classes.length, classes);
+        
+        // Carregar alunos do banco
+        console.log('Fazendo fetch para alunos...');
+        const alunosRes = await fetch(`${API_URL}/alunos`);
+        console.log('Response alunos status:', alunosRes.status);
+        
+        if (alunosRes.ok) {
+          const alunosAPI = await alunosRes.json();
+          console.log('Alunos API response:', alunosAPI);
+          students = Array.isArray(alunosAPI) ? alunosAPI.map(a => ({
+            id: a.id,
+            name: a.nome,
+            birthDate: a.data_nascimento,
+            email: a.email || '',
+            status: a.status,
+            classId: a.turma_id
+          })) : [];
+          console.log('Alunos carregados do banco:', students.length, students);
+          carregouDaAPI = true;
+        } else {
+          console.log('Erro na resposta de alunos:', await alunosRes.text());
+        }
+      } else {
+        console.log('Erro na resposta de turmas:', await turmasRes.text());
+      }
+    } catch (err) {
+      console.error('Erro ao carregar do banco:', err);
+      // Se falhar, deixar vazio (não carregar dados de exemplo)
+      classes = [];
+      students = [];
+      showFeedback('Erro ao conectar com o banco. Verifique se o backend está rodando.', 'error');
+    }
+    
+    // Atualizar interface com dados do banco (ou vazio se falhou)
+    console.log('Atualizando interface...');
+    recomputeClassOccupancy();
+    populateClassSelect();
+    updateClassOccupancy();
+    renderStudents(students);
+    updateStatistics();
+    hideLogin();
+    
+    console.log('=== INTERFACE ATUALIZADA ===');
+    if (carregouDaAPI) {
+      showFeedback(`${students.length} alunos carregados do banco de dados`, 'success');
+    }
+    
+  } catch (err) {
+    console.error('Erro geral:', err);
+    // Em caso de erro, deixar vazio
+    classes = [];
+    students = [];
+    renderStudents(students);
+    updateStatistics();
+    showFeedback('Erro ao carregar dados. Verifique se o backend está rodando.', 'error');
   }
 }
 
 function showLogin() {
-  document.getElementById('loginModal').style.display = 'flex';
-  document.getElementById('mainContent').style.display = 'none';
-  document.querySelector('header').style.display = 'none';
+  const loginModal = document.getElementById('loginModal');
+  if (loginModal) {
+    loginModal.style.display = 'flex';
+  }
 }
 
 function hideLogin() {
-  document.getElementById('loginModal').style.display = 'none';
-  document.getElementById('mainContent').style.display = 'block';
-  document.querySelector('header').style.display = 'block';
+  const loginModal = document.getElementById('loginModal');
+  if (loginModal) {
+    loginModal.style.display = 'none';
+  }
 }
 
 // Util: chamadas HTTP
@@ -75,6 +157,23 @@ async function fetchJSON(path, options = {}) {
       logout();
       throw new Error('Sessão expirada');
     }
+    const msg = data?.detail || data?.message || `Erro ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+// Nova função para chamadas sem autenticação
+async function fetchWithoutAuth(path, options = {}) {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+  
+  const isJSON = res.headers.get('content-type')?.includes('application/json');
+  const data = isJSON ? await res.json() : null;
+  
+  if (!res.ok) {
     const msg = data?.detail || data?.message || `Erro ${res.status}`;
     throw new Error(msg);
   }
@@ -131,34 +230,44 @@ function recomputeClassOccupancy() {
 
 // API helpers
 async function getTurmas() {
-  const data = await fetchJSON('/turmas');
-  classes = data.map(mapTurmaOutToFront);
+  try {
+    const data = await fetchJSON('/turmas');
+    classes = data.map(mapTurmaOutToFront);
+  } catch (err) {
+    console.log('Erro ao carregar turmas da API:', err.message);
+    // Não quebra, será tratado no carregarDadosCompletos
+  }
 }
 
 async function getAlunos(params = {}) {
-  const q = new URLSearchParams();
-  if (params.search) q.set('search', params.search);
-  if (params.turma_id) q.set('turma_id', params.turma_id);
-  if (params.status) q.set('status', params.status);
-  const qs = q.toString();
-  const data = await fetchJSON(`/alunos${qs ? `?${qs}` : ''}`);
-  students = data.map(mapAlunoOutToFront);
+  try {
+    const q = new URLSearchParams();
+    if (params.search) q.set('search', params.search);
+    if (params.turma_id) q.set('turma_id', params.turma_id);
+    if (params.status) q.set('status', params.status);
+    const qs = q.toString();
+    const data = await fetchJSON(`/alunos${qs ? `?${qs}` : ''}`);
+    students = data.map(mapAlunoOutToFront);
+  } catch (err) {
+    console.log('Erro ao carregar alunos da API:', err.message);
+    // Não quebra, será tratado no carregarDadosCompletos
+  }
 }
 
 async function createAlunoApi(form) {
   const payload = mapAlunoFormToBack(form);
-  const data = await fetchJSON('/alunos', { method: 'POST', body: JSON.stringify(payload) });
+  const data = await fetchWithoutAuth('/alunos', { method: 'POST', body: JSON.stringify(payload) });
   return mapAlunoOutToFront(data);
 }
 
 async function updateAlunoApi(id, form) {
   const payload = mapAlunoFormToBack(form);
-  const data = await fetchJSON(`/alunos/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+  const data = await fetchWithoutAuth(`/alunos/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
   return mapAlunoOutToFront(data);
 }
 
 async function deleteAlunoApi(id) {
-  await fetchJSON(`/alunos/${id}`, { method: 'DELETE' });
+  await fetchWithoutAuth(`/alunos/${id}`, { method: 'DELETE' });
 }
 
 async function postMatriculaApi(alunoId, turmaId) {
@@ -169,55 +278,34 @@ async function postMatriculaApi(alunoId, turmaId) {
 }
 
 async function loadInitialData() {
+  console.log('=== INICIANDO APLICAÇÃO ===');
+  
+  // Carregar dados diretamente, sem verificar token
+  console.log('Carregando dados...');
   try {
-    // Carregar usuário logado se já tiver token válido
-    if (!token) {
-      showLogin();
-      return;
-    }
-
-    try {
-      const meRes = await fetch(`${API_URL}/auth/me`, { 
-        headers: { Authorization: `Bearer ${token}` } 
-      });
-      
-      if (meRes.ok) {
-        currentUser = await meRes.json();
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      } else {
-        // Token inválido
-        localStorage.removeItem('token');
-        localStorage.removeItem('currentUser');
-        token = null;
-        showLogin();
-        return;
-      }
-    } catch (err) {
-      console.error('Erro ao verificar usuário:', err);
-      showLogin();
-      return;
-    }
-
-    // Carregar dados da aplicação
-    await getTurmas();
-    if (currentUser?.role === 'aluno' && currentUser?.turma_id) {
-      await getAlunos({ turma_id: currentUser.turma_id });
-    } else {
-      await getAlunos();
-    }
-    
-    recomputeClassOccupancy();
-    populateClassSelect();
-    updateClassOccupancy();
-    renderStudents(students);
-    updateStatistics();
-    applyRoleRestrictions();
-    hideLogin();
-    
+    await carregarTudo();
   } catch (err) {
-    console.error(err);
-    showFeedback(`Erro ao carregar dados: ${err.message}`, 'error');
+    console.log('Erro ao carregar dados iniciais:', err.message);
+    // Se falhar, carregar dados locais mesmo assim
+    carregarDadosLocais();
   }
+}
+
+// Função para carregar dados locais como fallback
+function carregarDadosLocais() {
+  // NÃO carregar dados de exemplo - deixar vazio para mostrar apenas dados do banco
+  classes = [];
+  students = [];
+  
+  // Atualizar interface mesmo que vazia
+  recomputeClassOccupancy();
+  populateClassSelect();
+  updateClassOccupancy();
+  renderStudents(students);
+  updateStatistics();
+  hideLogin();
+  
+  showFeedback('Nenhum dado encontrado. Verifique se o backend está rodando.', 'error');
 }
 
 // Gerenciamento do tema
@@ -507,6 +595,7 @@ function init() {
   setupEventListeners();
   loadSavedTheme();
   initColorWheel();
+  // Carrega dados automaticamente ao iniciar
   loadInitialData();
 }
 
@@ -595,8 +684,8 @@ function setupEventListeners() {
 
       try {
         await doLogin(username, password);
+        await carregarTudo();
         document.getElementById('loginForm').reset();
-        await loadInitialData();
         showFeedback('Login realizado com sucesso!');
       } catch (err) {
         errorDiv.textContent = err.message;
@@ -765,11 +854,21 @@ function filterStudents() {
 
 // Render students table
 function renderStudents(studentsToRender) {
+  console.log('=== RENDERIZANDO ESTUDANTES ===');
+  console.log('Estudantes para renderizar:', studentsToRender);
+  console.log('Quantidade:', studentsToRender.length);
+  
   const studentsList = document.getElementById('studentsList');
-  if (!studentsList) return;
+  if (!studentsList) {
+    console.error('Elemento studentsList não encontrado!');
+    return;
+  }
+  
+  console.log('Elemento studentsList encontrado:', studentsList);
   
   studentsList.innerHTML = '';
-  studentsToRender.forEach(student => {
+  studentsToRender.forEach((student, index) => {
+    console.log(`Renderizando estudante ${index + 1}:`, student);
     const row = document.createElement('tr');
     const cls = classes.find(c => c.id === student.classId);
 
@@ -793,6 +892,8 @@ function renderStudents(studentsToRender) {
     }
     studentsList.appendChild(row);
   });
+  
+  console.log('Finalizada renderização de', studentsToRender.length, 'estudantes');
 }
 
 // Calculate age from birthdate
@@ -814,14 +915,28 @@ let editingStudentId = null;
 // Handle new student form submission
 async function handleStudentSubmit(e) {
   e.preventDefault();
+  console.log('=== SALVANDO ALUNO ===');
 
   const formData = {
-    name: document.getElementById('studentName').value,
+    name: document.getElementById('studentName').value.trim(),
     birthDate: document.getElementById('birthDate').value,
-    email: document.getElementById('email').value,
+    email: document.getElementById('email').value.trim(),
     status: document.getElementById('status').value,
     classId: parseInt(document.getElementById('classId').value) || null
   };
+
+  console.log('Dados do formulário:', formData);
+
+  // Validações básicas
+  if (!formData.name) {
+    showFeedback('Nome é obrigatório', 'error');
+    return;
+  }
+
+  if (!formData.birthDate) {
+    showFeedback('Data de nascimento é obrigatória', 'error');
+    return;
+  }
 
   // Validate age
   const age = calculateAge(formData.birthDate);
@@ -831,28 +946,32 @@ async function handleStudentSubmit(e) {
   }
 
   try {
+    console.log('Tentando salvar aluno...');
     if (editingStudentId) {
-      const updated = await updateAlunoApi(editingStudentId, formData);
-      const idx = students.findIndex(s => s.id === editingStudentId);
-      if (idx !== -1) students[idx] = updated;
+      console.log('Atualizando aluno ID:', editingStudentId);
+      await updateAlunoApi(editingStudentId, formData);
       showFeedback('Aluno atualizado com sucesso');
     } else {
-      const created = await createAlunoApi(formData);
-      students.push(created);
+      console.log('Criando novo aluno...');
+      const result = await createAlunoApi(formData);
+      console.log('Resultado da criação:', result);
       showFeedback('Aluno cadastrado com sucesso');
     }
-    recomputeClassOccupancy();
-    updateClassOccupancy();
+    
+    console.log('Recarregando dados...');
+    // Recarregar dados do banco
+    await carregarTudo();
+    
   } catch (err) {
+    console.error('Erro ao salvar aluno:', err);
     showFeedback(`Erro ao salvar: ${err.message}`, 'error');
     return;
   }
 
   closeModal('newStudentModal');
-  filterStudents();
-  updateStatistics();
-  studentForm.reset();
+  document.getElementById('studentForm').reset();
   editingStudentId = null;
+  console.log('=== ALUNO SALVO COM SUCESSO ===');
 }
 
 // Update statistics
@@ -900,7 +1019,8 @@ function closeModal(modalId) {
 
   if (modalId === 'newStudentModal') {
     editingStudentId = null;
-    studentForm.reset();
+  const form = document.getElementById('studentForm');
+  if (form) form.reset();
   } else if (modalId === 'transferStudentModal') {
     transferringStudentId = null;
     document.getElementById('transferForm').reset();
@@ -987,13 +1107,11 @@ async function handleTransferSubmit(e) {
 
   try {
     await postMatriculaApi(student.id, newClassId);
-    student.classId = newClassId;
-    student.status = 'ativo';
     transfersToday++;
-    recomputeClassOccupancy();
-    updateClassOccupancy();
-    filterStudents();
-    updateStatistics();
+    
+    // Recarregar dados do banco
+    await carregarTudo();
+    
     closeModal('transferStudentModal');
     transferringStudentId = null;
     showFeedback(`${student.name} transferido(a) com sucesso para ${newClass.name}!`);
@@ -1028,19 +1146,15 @@ async function deleteStudent(id) {
     return;
   }
 
-  const studentIndex = students.findIndex(s => s.id === id);
-  if (studentIndex === -1) {
+  const student = students.find(s => s.id === id);
+  if (!student) {
     showFeedback('Aluno não encontrado', 'error');
     return;
   }
 
   try {
     await deleteAlunoApi(id);
-    students.splice(studentIndex, 1);
-    recomputeClassOccupancy();
-    filterStudents();
-    updateStatistics();
-    updateClassOccupancy();
+    await carregarTudo(); // Recarregar do banco
     showFeedback('Aluno excluído com sucesso');
   } catch (err) {
     showFeedback(`Erro ao excluir: ${err.message}`, 'error');
@@ -1087,12 +1201,53 @@ function applyRoleRestrictions() {
   }
 }
 
+// Atualiza informações do usuário no header
+function updateUserInfo() {
+  const userInfo = document.getElementById('userInfo');
+  if (userInfo && currentUser) {
+    const roleText = currentUser.role === 'professor' ? 'Professor' : 'Aluno';
+    userInfo.textContent = `Logado como: ${roleText} (${currentUser.username})`;
+  }
+}
+
 // Logout utilitário
 function logout() {
   localStorage.removeItem('token');
   localStorage.removeItem('currentUser');
   token = null;
   currentUser = null;
+  students = [];
+  classes = [];
+  
+  // Limpar interface
+  const studentsList = document.getElementById('studentsList');
+  if (studentsList) studentsList.innerHTML = '';
+  
+  const userInfo = document.getElementById('userInfo');
+  if (userInfo) userInfo.textContent = '';
+  
+  updateStatistics();
   showLogin();
   showFeedback('Logout realizado com sucesso');
+}
+
+// Trocar usuário
+function trocarUsuario() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('currentUser');
+  token = null;
+  currentUser = null;
+  students = [];
+  classes = [];
+  
+  // Limpar interface
+  const studentsList = document.getElementById('studentsList');
+  if (studentsList) studentsList.innerHTML = '';
+  
+  const userInfo = document.getElementById('userInfo');
+  if (userInfo) userInfo.textContent = '';
+  
+  updateStatistics();
+  showLogin();
+  showFeedback('Selecione outro usuário para entrar');
 }

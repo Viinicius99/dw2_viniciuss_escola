@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste API</title>
+</head>
+<body>
+    <h1>Teste de Conexão com API</h1>
+    <button onclick="testarAPI()">Testar Conexão</button>
+    <div id="resultado"></div>
+
+    <script>
+        async function testarAPI() {
+            const resultado = document.getElementById('resultado');
+            resultado.innerHTML = '<p>Testando...</p>';
+            
+            try {
+                console.log('Testando conexão com API...');
+                
+                // Testar turmas
+                console.log('Fazendo fetch para turmas...');
+                const turmasRes = await fetch('http://127.0.0.1:8000/turmas');
+                console.log('Status turmas:', turmasRes.status);
+                
+                if (turmasRes.ok) {
+                    const turmas = await turmasRes.json();
+                    console.log('Turmas:', turmas);
+                    resultado.innerHTML += `<p><strong>✅ Turmas (${turmas.length}):</strong> ${JSON.stringify(turmas, null, 2)}</p>`;
+                } else {
+                    resultado.innerHTML += `<p><strong>❌ Erro turmas:</strong> ${turmasRes.status}</p>`;
+                }
+                
+                // Testar alunos
+                console.log('Fazendo fetch para alunos...');
+                const alunosRes = await fetch('http://127.0.0.1:8000/alunos');
+                console.log('Status alunos:', alunosRes.status);
+                
+                if (alunosRes.ok) {
+                    const alunos = await alunosRes.json();
+                    console.log('Alunos:', alunos);
+                    resultado.innerHTML += `<p><strong>✅ Alunos (${alunos.length}):</strong> ${JSON.stringify(alunos, null, 2)}</p>`;
+                } else {
+                    resultado.innerHTML += `<p><strong>❌ Erro alunos:</strong> ${alunosRes.status}</p>`;
+                }
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                resultado.innerHTML += `<p><strong>❌ Erro de conexão:</strong> ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

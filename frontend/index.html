@@ -12,6 +12,7 @@
         <div class="container header-content">
             <h1>Gestão Escolar</h1>
             <div class="header-right">
+                <div id="userInfo" style="margin-right: 16px; color: #666; font-size: 14px;"></div>
                 <div class="search-container">
                     <input type="search" id="searchStudent" placeholder="Buscar aluno..." aria-label="Buscar aluno">
                 </div>
@@ -32,7 +33,8 @@
                         <path d="M17 10C18.1046 10 19 9.10457 19 8C19 6.89543 18.1046 6 17 6C15.8954 6 15 6.89543 15 8C15 9.10457 15.8954 10 17 10Z" fill="currentColor"/>
                     </svg>
                 </button>
-                <button onclick="logout()" class="btn btn-secondary" style="margin-left:8px">Sair</button>
+                <button onclick="logout()" class="btn btn-secondary" style="margin-left:8px; display:none;">Sair</button>
+                <button onclick="trocarUsuario()" class="btn btn-primary" style="margin-left:8px; display:none;">Trocar Usuário</button>
             </div>
         </div>
     </header>
@@ -90,31 +92,7 @@
         </div>
     </div>
 
-    <!-- Modal de Login -->
-    <div id="loginModal" class="modal login-modal" style="display: none;">
-        <div class="modal-content login-card">
-            <h2>Login - Gestão Escolar</h2>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="loginUsername">Usuário:</label>
-                    <input type="text" id="loginUsername" required autocomplete="username">
-                </div>
-                <div class="form-group">
-                    <label for="loginPassword">Senha:</label>
-                    <input type="password" id="loginPassword" required autocomplete="current-password">
-                </div>
-                <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary">Entrar</button>
-                </div>
-                <div id="loginError" class="error" role="alert"></div>
-                <div style="margin-top: 12px; color: #6b7280; font-size: 12px;">
-                    Dicas: professor/prof123 · aluno/aluno123
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <main class="container main-content" id="mainContent" style="display: none;">
+    <main class="container main-content">
         <aside class="sidebar">
             <div class="filters">
                 <h2>Filtros</h2>
@@ -253,8 +231,7 @@
                     <button type="submit" class="btn btn-primary">Confirmar Transferência</button>
                 </div>
             </form>
-        </div>
-    </main>
+    </div>
 
     <div id="feedback" class="feedback" role="alert" aria-live="polite"></div>
 

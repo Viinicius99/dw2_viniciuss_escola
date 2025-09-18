@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .database import get_db, init_db
-from .models import Aluno, Turma, User
+from database import get_db, init_db
+from database import SessionLocal
+from models import Aluno, Turma, User
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -29,17 +32,79 @@ app = FastAPI(title="Gestão Escolar API", version="1.0.0")
 # CORS liberal para permitir seu frontend local
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"]
-    ,
-    allow_headers=["*"],
+    allow_origins=["*", "null"],  # permite file:// (Origin: null) e qualquer origem http
+    allow_credentials=False,        # não usamos cookies; permite wildcard funcionar bem
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
 
 
 @app.on_event("startup")
 def on_startup():
     init_db()
+    # Bootstrap: cria usuários padrão se o banco estiver vazio (não altera dados existentes)
+    from sqlalchemy import select as _select, func as _func
+    from datetime import date
+    db = SessionLocal()
+    try:
+        # Verificar se há turmas
+        turmas_count = db.scalar(_select(_func.count()).select_from(Turma)) or 0
+        print(f"Turmas encontradas: {turmas_count}")
+        
+        if turmas_count == 0:
+            print("Criando turmas padrão...")
+            turmas_data = [
+                Turma(nome="1° Ano A", capacidade=30),
+                Turma(nome="1° Ano B", capacidade=30),
+                Turma(nome="2° Ano A", capacidade=28),
+                Turma(nome="2° Ano B", capacidade=28),
+                Turma(nome="3° Ano A", capacidade=25),
+                Turma(nome="3° Ano B", capacidade=25),
+            ]
+            for turma in turmas_data:
+                db.add(turma)
+            db.commit()
+            print("Turmas criadas!")
+        
+        # Verificar se há alunos
+        alunos_count = db.scalar(_select(_func.count()).select_from(Aluno)) or 0
+        print(f"Alunos encontrados: {alunos_count}")
+        
+        if alunos_count == 0:
+            print("Criando alunos padrão...")
+            # Buscar turmas criadas
+            turmas = db.scalars(_select(Turma).order_by(Turma.id)).all()
+            if turmas:
+                alunos_data = [
+                    Aluno(nome="João Silva", data_nascimento=date(2005, 3, 15), email="joao@email.com", status="ativo", turma_id=turmas[0].id),
+                    Aluno(nome="Maria Santos", data_nascimento=date(2005, 7, 22), email="maria@email.com", status="ativo", turma_id=turmas[0].id),
+                    Aluno(nome="Pedro Oliveira", data_nascimento=date(2004, 11, 8), email="pedro@email.com", status="ativo", turma_id=turmas[1].id if len(turmas) > 1 else turmas[0].id),
+                    Aluno(nome="Ana Costa", data_nascimento=date(2004, 2, 14), email="ana@email.com", status="ativo", turma_id=turmas[1].id if len(turmas) > 1 else turmas[0].id),
+                    Aluno(nome="Carlos Lima", data_nascimento=date(2003, 9, 30), email="carlos@email.com", status="ativo", turma_id=turmas[2].id if len(turmas) > 2 else turmas[0].id),
+                    Aluno(nome="Beatriz Ferreira", data_nascimento=date(2003, 12, 5), email="beatriz@email.com", status="ativo", turma_id=turmas[2].id if len(turmas) > 2 else turmas[0].id),
+                ]
+                for aluno in alunos_data:
+                    db.add(aluno)
+                db.commit()
+                print("Alunos criados!")
+        
+        # Verificar usuários
+        users_count = db.scalar(_select(_func.count()).select_from(User)) or 0
+        if users_count == 0:
+            # cria usuário professor e aluno padrão
+            prof = User(username="professor", password_hash=get_password_hash("prof123"), role="professor")
+            # tenta associar o aluno à primeira turma, se existir
+            turma = db.scalars(_select(Turma).order_by(Turma.id)).first()
+            aluno_user = User(
+                username="aluno",
+                password_hash=get_password_hash("aluno123"),
+                role="aluno",
+                turma_id=(turma.id if turma else None),
+            )
+            db.add_all([prof, aluno_user])
+            db.commit()
+    finally:
+        db.close()
 
 
 @app.get("/health")
@@ -142,7 +207,7 @@ DbDep = Annotated[Session, Depends(get_db)]
 
 
 @app.get("/turmas", response_model=list[TurmaOut])
-def listar_turmas(db: DbDep, current_user: Annotated[User, Depends(get_current_user)]):
+def listar_turmas(db: DbDep):
     stmt = select(Turma).order_by(Turma.nome)
     turmas = db.scalars(stmt).all()
     return turmas
@@ -167,7 +232,6 @@ def criar_turma(payload: TurmaIn, db: DbDep, current_user: Annotated[User, Depen
 @app.get("/alunos", response_model=list[AlunoOut])
 def listar_alunos(
     db: DbDep,
-    current_user: Annotated[User, Depends(get_current_user)],
     search: str | None = None,
     turma_id: int | None = Query(default=None),
     status_param: str | None = Query(default=None, alias="status"),
@@ -187,14 +251,6 @@ def listar_alunos(
             raise HTTPException(status_code=422, detail="status inválido")
         stmt = stmt.where(Aluno.status == status_param)
 
-    # Se usuário for aluno, restringe à sua turma
-    if current_user.role == "aluno":
-        if current_user.turma_id is None:
-            # sem turma, não retorna alunos
-            stmt = stmt.where(Aluno.id == -1)
-        else:
-            stmt = stmt.where(Aluno.turma_id == current_user.turma_id)
-
     if sort == "nome":
         stmt = stmt.order_by(Aluno.nome)
     elif sort == "idade":
@@ -207,8 +263,7 @@ def listar_alunos(
 
 
 @app.post("/alunos", response_model=AlunoOut, status_code=status.HTTP_201_CREATED)
-def criar_aluno(payload: AlunoIn, db: DbDep, current_user: Annotated[User, Depends(get_current_user)]):
-    require_role(current_user, ("professor",))
+def criar_aluno(payload: AlunoIn, db: DbDep):
     # valida turma se enviada
     if payload.turma_id is not None:
         turma = db.get(Turma, payload.turma_id)
@@ -222,8 +277,7 @@ def criar_aluno(payload: AlunoIn, db: DbDep, current_user: Annotated[User, Depen
 
 
 @app.put("/alunos/{aluno_id}", response_model=AlunoOut)
-def atualizar_aluno(aluno_id: int, payload: AlunoIn, db: DbDep, current_user: Annotated[User, Depends(get_current_user)]):
-    require_role(current_user, ("professor",))
+def atualizar_aluno(aluno_id: int, payload: AlunoIn, db: DbDep):
     aluno = db.get(Aluno, aluno_id)
     if not aluno:
         raise HTTPException(status_code=404, detail="Aluno não encontrado")
@@ -241,8 +295,7 @@ def atualizar_aluno(aluno_id: int, payload: AlunoIn, db: DbDep, current_user: An
 
 
 @app.delete("/alunos/{aluno_id}", status_code=status.HTTP_204_NO_CONTENT)
-def deletar_aluno(aluno_id: int, db: DbDep, current_user: Annotated[User, Depends(get_current_user)]):
-    require_role(current_user, ("professor",))
+def deletar_aluno(aluno_id: int, db: DbDep):
     aluno = db.get(Aluno, aluno_id)
     if not aluno:
         raise HTTPException(status_code=404, detail="Aluno não encontrado")
@@ -300,3 +353,33 @@ class UserOut(BaseModel):
 @app.get("/auth/me", response_model=UserOut)
 def me(current_user: Annotated[User, Depends(get_current_user)]):
     return current_user
+
+
+# ====== Static Frontend (serve index e assets sem sobrescrever a API) ======
+FRONTEND_DIR = (Path(__file__).resolve().parent.parent / "frontend").resolve()
+
+if FRONTEND_DIR.exists():
+    index_file = FRONTEND_DIR / "index.html"
+    script_file = FRONTEND_DIR / "script.js"
+    style_file = FRONTEND_DIR / "styles.css"
+
+    @app.get("/", include_in_schema=False)
+    def serve_index():
+        return FileResponse(index_file)
+
+    @app.get("/index.html", include_in_schema=False)
+    def serve_index_alias():
+        return FileResponse(index_file)
+
+    @app.get("/script.js", include_in_schema=False)
+    def serve_script():
+        return FileResponse(script_file)
+
+    @app.get("/styles.css", include_in_schema=False)
+    def serve_styles():
+        return FileResponse(style_file)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -32,7 +32,7 @@ def get_db():
 
 def init_db():
     # Import models here so metadata has tables
-    from . import models  # noqa: F401
+    import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 
