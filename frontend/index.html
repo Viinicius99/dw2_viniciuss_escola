@@ -12,9 +12,7 @@
         <div class="container header-content">
             <h1>Gestão Escolar</h1>
             <div class="header-right">
-                <div id="userInfo" style="margin-right: 16px; color: #666; font-size: 14px;"></div>
-                <button id="loginBtn" onclick="showLogin()" style="margin-right: 16px; padding: 4px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Login</button>
-                <button id="logoutBtn" onclick="logout()" style="display: none; margin-right: 16px; padding: 4px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">Sair</button>
+                <div id="userInfo" style="margin-right: 12px; color: #666; font-size: 14px;"></div>
                 <div class="search-container">
                     <input type="search" id="searchStudent" placeholder="Buscar aluno..." aria-label="Buscar aluno">
                 </div>
@@ -35,11 +33,20 @@
                         <path d="M17 10C18.1046 10 19 9.10457 19 8C19 6.89543 18.1046 6 17 6C15.8954 6 15 6.89543 15 8C15 9.10457 15.8954 10 17 10Z" fill="currentColor"/>
                     </svg>
                 </button>
-                <button onclick="logout()" class="btn btn-secondary" style="margin-left:8px; display:none;">Sair</button>
-                <button onclick="trocarUsuario()" class="btn btn-primary" style="margin-left:8px; display:none;">Trocar Usuário</button>
+                <button id="loginBtn" onclick="showLogin()" class="btn btn-primary" style="margin-left:8px;">Login</button>
+                <button id="logoutBtn" onclick="logout()" class="btn btn-secondary" style="margin-left:8px; display:none;">Sair</button>
             </div>
         </div>
     </header>
+
+    <!-- Banner de configuração da API (mostrado apenas quando necessário) -->
+    <div id="apiConfigBanner" style="display:none; gap:8px; align-items:center; padding:8px 12px; background:#FEF3C7; color:#92400E; border-bottom:1px solid #F59E0B;">
+        <span style="font-weight:600;">Backend não encontrado.</span>
+        <span>Informe a URL da API para conectar:</span>
+        <input id="apiBaseInput" type="text" placeholder="http://SEU_IP:8005" style="flex:0 1 260px; max-width:60vw; padding:6px 8px; border:1px solid #F59E0B; border-radius:6px;" />
+        <button id="apiSaveBtn" class="btn btn-primary" style="padding:6px 10px;">Salvar</button>
+        <button id="apiCloseBtn" class="btn btn-secondary" style="padding:6px 10px;">Fechar</button>
+    </div>
 
     <!-- Modal de Cores -->
     <div id="colorPickerModal" class="modal">
@@ -94,10 +101,10 @@
         </div>
     </div>
 
-    <!-- Modal de Login -->
-    <div id="loginModal" class="modal">
+    <!-- Modal de Login (discreto, sem alterar layout principal) -->
+    <div id="loginModal" class="modal" aria-hidden="true" style="display:none;">
         <div class="modal-content login-card">
-            <h2>Login - Gestão Escolar</h2>
+            <h2>Login</h2>
             <form id="loginForm">
                 <div class="form-group">
                     <label for="loginUsername">Usuário:</label>
@@ -107,16 +114,17 @@
                     <label for="loginPassword">Senha:</label>
                     <input type="password" id="loginPassword" required autocomplete="current-password">
                 </div>
+                <div id="loginError" class="error" role="alert" style="min-height:18px"></div>
                 <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="hideLogin()">Cancelar</button>
                     <button type="submit" class="btn btn-primary">Entrar</button>
                 </div>
-                <div id="loginError" class="error" role="alert"></div>
-                <div style="margin-top: 12px; color: #6b7280; font-size: 12px;">
-                    <strong>Contas de teste:</strong><br>
-                    Professor: professor / prof123<br>
-                    Aluno: aluno / aluno123
-                </div>
             </form>
+            <div style="margin-top: 12px; color: #6b7280; font-size: 12px;">
+                <strong>Contas de teste:</strong>
+                <div>Professor: professor / prof123</div>
+                <div>Aluno: aluno / aluno123</div>
+            </div>
         </div>
     </div>
 
@@ -260,9 +268,11 @@
                 </div>
             </form>
     </div>
+    </div>
 
     <div id="feedback" class="feedback" role="alert" aria-live="polite"></div>
 
+    <script src="liveserver-config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

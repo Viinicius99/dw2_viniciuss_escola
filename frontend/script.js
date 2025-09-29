@@ -1,15 +1,76 @@
 // Estado sincronizado com a API (FastAPI)
-const API_URL = 'http://127.0.0.1:8002';
-let token = localStorage.getItem('token') || null;
-let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+// Define a base da API de forma dinâmica para funcionar em qualquer PC.
+// - Se estiver sendo servido por HTTP(S) (via FastAPI), usa mesma origem ('').
+// - Se abrir via file://, usa valor salvo em localStorage('API_URL') ou fallback localhost.
+const API_URL = (() => {
+  try {
+    // Se está no Live Server (porta 5500) ou file://, sempre usar backend na 8005
+    if (typeof window !== 'undefined' && window.location) {
+      const port = window.location.port;
+      const protocol = window.location.protocol;
+      
+      console.log('Detectando ambiente - Port:', port, 'Protocol:', protocol);
+      
+      // Se está no Live Server (5500) ou file://, apontar para backend
+      if (protocol === 'file:' || port === '5500' || port !== '8005') {
+        const apiUrl = localStorage.getItem('API_URL') || 'http://127.0.0.1:8005';
+        console.log('Usando API_URL para Live Server/file:', apiUrl);
+        return apiUrl;
+      }
+      
+      // Se está sendo servido pelo FastAPI (porta 8005), usar mesma origem
+      if (port === '8005') {
+        console.log('Detectado FastAPI - usando mesma origem');
+        return '';
+      }
+    }
+  } catch (_e) {}
+  const fallback = localStorage.getItem('API_URL') || 'http://127.0.0.1:8005';
+  console.log('Usando fallback API_URL:', fallback);
+  return fallback;
+})();
+
+// Concatena a base da API e o caminho sem quebrar o esquema (http://)
+function buildUrl(path) {
+  const base = String(API_URL || '');
+  const p = String(path || '/');
+  if (!base) {
+    // Mesmo host da página (servido pelo FastAPI)
+    return p.startsWith('/') ? p : `/${p}`;
+  }
+  const trimmedBase = base.replace(/\/$/, '');
+  return p.startsWith('/') ? `${trimmedBase}${p}` : `${trimmedBase}/${p}`;
+}
+
+// Permite configurar a URL da API quando o site é aberto via file:// em outro PC
+// Uso no console do navegador: setApiBase('http://SEU_IP:8005') e recarregue
+window.setApiBase = function setApiBase(url) {
+  try {
+    if (!/^https?:\/\//i.test(url)) {
+      showFeedback('URL inválida. Use http:// ou https://', 'error');
+      return;
+    }
+    localStorage.setItem('API_URL', url.replace(/\/$/, ''));
+    showFeedback('API_URL salva. Carregando dados...', 'success');
+    // Não recarregar a página, apenas recarregar os dados
+    setTimeout(async () => {
+      await carregarTudo();
+    }, 300);
+  } catch (e) {
+    console.error('Falha ao salvar API_URL:', e);
+  }
+};
 let students = [];
 let transfersToday = 0;
 let classes = [];
+// Autenticação persistente
+let token = localStorage.getItem('token') || null;
+let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
 // Sistema de Login SIMPLIFICADO
 async function doLogin(username, password) {
   try {
-    const res = await fetch(`${API_URL}/auth/login`, {
+  const res = await fetch(buildUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `username=${username}&password=${password}&grant_type=password`,
@@ -24,7 +85,7 @@ async function doLogin(username, password) {
     localStorage.setItem('token', token);
 
     // Buscar usuário
-    const userRes = await fetch(`${API_URL}/auth/me`, {
+  const userRes = await fetch(buildUrl('/auth/me'), {
       headers: { Authorization: `Bearer ${token}` }
     });
     
@@ -44,6 +105,8 @@ async function carregarTudo() {
   try {
     console.log('=== CARREGANDO DADOS DO BANCO ===');
     console.log('API_URL:', API_URL);
+    console.log('buildUrl("/turmas"):', buildUrl('/turmas'));
+    console.log('buildUrl("/alunos"):', buildUrl('/alunos'));
     
     let carregouDaAPI = false;
     
@@ -51,7 +114,7 @@ async function carregarTudo() {
     try {
       // Carregar turmas do banco
       console.log('Fazendo fetch para turmas...');
-      const turmasRes = await fetch(`${API_URL}/turmas`);
+    const turmasRes = await fetch(buildUrl('/turmas'));
       console.log('Response turmas status:', turmasRes.status);
       
       if (turmasRes.ok) {
@@ -67,7 +130,7 @@ async function carregarTudo() {
         
         // Carregar alunos do banco
         console.log('Fazendo fetch para alunos...');
-        const alunosRes = await fetch(`${API_URL}/alunos`);
+  const alunosRes = await fetch(buildUrl('/alunos'));
         console.log('Response alunos status:', alunosRes.status);
         
         if (alunosRes.ok) {
@@ -95,6 +158,7 @@ async function carregarTudo() {
       classes = [];
       students = [];
       showFeedback('Erro ao conectar com o banco. Verifique se o backend está rodando.', 'error');
+      maybeShowApiBanner();
     }
     
     // Atualizar interface com dados do banco (ou vazio se falhou)
@@ -104,11 +168,21 @@ async function carregarTudo() {
     updateClassOccupancy();
     renderStudents(students);
     updateStatistics();
-    hideLogin();
     
     console.log('=== INTERFACE ATUALIZADA ===');
     if (carregouDaAPI) {
       showFeedback(`${students.length} alunos carregados do banco de dados`, 'success');
+      console.log('Dados carregados com sucesso! Estudantes:', students);
+      console.log('Turmas:', classes);
+      
+      // Verificar se a tabela foi renderizada
+      setTimeout(() => {
+        const tbody = document.getElementById('studentsList');
+        if (tbody && tbody.children.length === 0 && students.length > 0) {
+          console.warn('Dados carregados mas tabela vazia. Tentando renderizar novamente...');
+          renderStudents(students);
+        }
+      }, 500);
     }
     
   } catch (err) {
@@ -119,6 +193,80 @@ async function carregarTudo() {
     renderStudents(students);
     updateStatistics();
     showFeedback('Erro ao carregar dados. Verifique se o backend está rodando.', 'error');
+    maybeShowApiBanner();
+  }
+}
+
+function maybeShowApiBanner() {
+  try {
+    const banner = document.getElementById('apiConfigBanner');
+    const input = document.getElementById('apiBaseInput');
+    const save = document.getElementById('apiSaveBtn');
+    const close = document.getElementById('apiCloseBtn');
+    if (!banner || !input || !save || !close) return;
+
+    // Mostra sempre o banner quando houve erro para permitir configurar a API
+    banner.style.display = 'flex';
+    input.value = (localStorage.getItem('API_URL') || 'http://127.0.0.1:8005');
+    save.onclick = () => {
+      const url = input.value.trim();
+      window.setApiBase(url);
+    };
+    close.onclick = () => {
+      banner.style.display = 'none';
+    };
+  } catch (e) {
+    console.warn('Falha ao exibir banner da API:', e);
+  }
+}
+
+// Tenta detectar automaticamente a API quando aberto via file:// ou quando a base não está definida
+async function autoDetectApiBase() {
+  try {
+    // Se está no Live Server ou file://, sempre tentar detectar o backend
+    const isLiveServer = typeof window !== 'undefined' && window.location && window.location.port === '5500';
+    const isFileProtocol = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
+    const needsDetection = isLiveServer || isFileProtocol || !localStorage.getItem('API_URL');
+    
+    console.log('AutoDetect - isLiveServer:', isLiveServer, 'isFileProtocol:', isFileProtocol, 'needsDetection:', needsDetection);
+    
+    if (!needsDetection) return false;
+
+    console.log('Tentando detectar backend automaticamente...');
+    const candidates = [
+      'http://127.0.0.1:8005',
+      'http://localhost:8005',
+    ];
+
+    for (const base of candidates) {
+      console.log(`Testando: ${base}`);
+      const ok = await probeHealth(base);
+      if (ok) {
+        localStorage.setItem('API_URL', base);
+        console.log('✅ Backend detectado automaticamente:', base);
+        showFeedback('Backend conectado com sucesso!', 'success');
+        // Apenas recarregar os dados, SEM recarregar a página
+        await carregarTudo();
+        return true;
+      }
+    }
+    console.log('❌ Nenhum backend encontrado');
+    showFeedback('Não foi possível conectar ao backend. Verifique se está rodando na porta 8005.', 'error');
+  } catch (e) {
+    console.warn('Falha na autodetecção da API:', e);
+  }
+  return false;
+}
+
+async function probeHealth(base) {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(`${base}/health`, { signal: controller.signal, cache: 'no-store' });
+    clearTimeout(id);
+    return res.ok;
+  } catch (_e) {
+    return false;
   }
 }
 
@@ -142,10 +290,9 @@ function hideLogin() {
 
 // Util: chamadas HTTP
 async function fetchJSON(path, options = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(buildUrl(path), { headers, ...options });
   
   const isJSON = res.headers.get('content-type')?.includes('application/json');
   const data = isJSON ? await res.json() : null;
@@ -164,19 +311,94 @@ async function fetchJSON(path, options = {}) {
 
 // Nova função para chamadas sem autenticação
 async function fetchWithoutAuth(path, options = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
-  
-  const isJSON = res.headers.get('content-type')?.includes('application/json');
-  const data = isJSON ? await res.json() : null;
-  
-  if (!res.ok) {
-    const msg = data?.detail || data?.message || `Erro ${res.status}`;
-    throw new Error(msg);
+  try {
+    const res = await fetch(buildUrl(path), {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options,
+    });
+
+    console.log(`[fetchWithoutAuth] ${options.method || 'GET'} ${buildUrl(path)} - Status: ${res.status}`);
+
+    let data = null;
+    let responseText = '';
+
+    try {
+      responseText = await res.text();
+      console.log(`[fetchWithoutAuth] Response text: ${responseText}`);
+
+      if (responseText) {
+        const isJSON = res.headers.get('content-type')?.includes('application/json');
+        if (isJSON) {
+          data = JSON.parse(responseText);
+          console.log(`[fetchWithoutAuth] Parsed JSON:`, data);
+        }
+      }
+    } catch (parseError) {
+      console.error(`[fetchWithoutAuth] Error parsing response:`, parseError);
+    }
+
+    if (!res.ok) {
+      let errorMessage = `Erro ${res.status}`;
+
+      // FastAPI 422: data.detail costuma ser um array [{loc, msg, type}]
+      const extractFastApiDetails = (detail) => {
+        try {
+          if (Array.isArray(detail)) {
+            const parts = detail.map(d => {
+              const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : d.loc;
+              const msg = d.msg || d.message || JSON.stringify(d);
+              // Tradução simples para campos comuns
+              const fieldName =
+                field === 'email' ? 'Email' :
+                field === 'data_nascimento' ? 'Data de nascimento' :
+                field === 'turma_id' ? 'Turma' : field;
+              return fieldName ? `${fieldName}: ${msg}` : msg;
+            });
+            return parts.join('; ');
+          }
+          if (typeof detail === 'string') return detail;
+          return JSON.stringify(detail);
+        } catch { return 'Erro de validação'; }
+      };
+
+      if (data) {
+        if (data.detail !== undefined) {
+          errorMessage = extractFastApiDetails(data.detail);
+        } else if (data.message) {
+          errorMessage = data.message;
+        } else if (Array.isArray(data)) {
+          errorMessage = data.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ');
+        } else if (typeof data === 'string') {
+          errorMessage = data;
+        } else {
+          errorMessage = `Erro ${res.status}: ${JSON.stringify(data)}`;
+        }
+      } else if (responseText) {
+        errorMessage = `Erro ${res.status}: ${responseText}`;
+      } else {
+        errorMessage = `Erro ${res.status}: ${res.statusText}`;
+      }
+
+      // Evitar [object Object]
+      if (!errorMessage || errorMessage === '[object Object]') {
+        errorMessage = `Erro ${res.status}`;
+      }
+
+      console.error(`[fetchWithoutAuth] Error: ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+
+    return data;
+  } catch (error) {
+    console.error(`[fetchWithoutAuth] Network/other error:`, error);
+
+    if (error instanceof Error && error.message && error.message !== '[object Object]') {
+      throw error;
+    }
+
+    const message = error.message || error.toString() || 'Erro de conexão com o servidor';
+    throw new Error(message);
   }
-  return data;
 }
 
 // Mapeamentos front <-> back
@@ -278,36 +500,30 @@ async function postMatriculaApi(alunoId, turmaId) {
 
 async function loadInitialData() {
   console.log('=== INICIANDO APLICAÇÃO ===');
+  console.log('API_URL configurada:', API_URL);
   
   // Carregar dados normalmente primeiro (comportamento original)
   await carregarTudo();
   
   // Se tem token válido, aplicar restrições de usuário
-  if (token && currentUser) {
+  if (token) {
     try {
-      const userRes = await fetch(`${API_URL}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (userRes.ok) {
-        console.log('Usuário já logado:', currentUser);
-        updateUserInfo();
-        applyRoleRestrictions();
-        return;
-      } else {
-        // Token inválido, limpar
-        localStorage.removeItem('token');
-        localStorage.removeItem('currentUser');
-        token = null;
-        currentUser = null;
-      }
+      const me = await fetchJSON('/auth/me');
+      currentUser = me;
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      updateUserInfo();
+      applyRoleRestrictions();
+      await carregarDadosComBaseNoUsuario();
     } catch (err) {
-      console.log('Erro ao verificar token:', err);
+      console.log('Token inválido, limpando sessão');
       localStorage.removeItem('token');
       localStorage.removeItem('currentUser');
       token = null;
       currentUser = null;
+      updateUserInfo();
     }
+  } else {
+    updateUserInfo();
   }
 }
 
@@ -318,7 +534,7 @@ async function carregarDadosComBaseNoUsuario() {
     console.log('Usuário atual:', currentUser);
     
     // Carregar turmas (sempre necessário)
-    const turmasRes = await fetch(`${API_URL}/turmas`);
+  const turmasRes = await fetch(buildUrl('/turmas'));
     if (turmasRes.ok) {
       const turmasAPI = await turmasRes.json();
       classes = Array.isArray(turmasAPI) ? turmasAPI.map(t => ({
@@ -331,7 +547,7 @@ async function carregarDadosComBaseNoUsuario() {
     }
     
     // Carregar alunos baseado no papel do usuário
-    let alunosUrl = `${API_URL}/alunos`;
+  let alunosUrl = buildUrl('/alunos');
     
     // Se for aluno, carregar apenas da sua turma
     if (currentUser?.role === 'aluno' && currentUser?.turma_id) {
@@ -341,7 +557,7 @@ async function carregarDadosComBaseNoUsuario() {
       console.log('Carregando todos os alunos (professor)');
     }
     
-    const alunosRes = await fetch(alunosUrl);
+  const alunosRes = await fetch(alunosUrl);
     if (alunosRes.ok) {
       const alunosAPI = await alunosRes.json();
       students = Array.isArray(alunosAPI) ? alunosAPI.map(a => ({
@@ -671,12 +887,37 @@ const colorPalettes = {
 
 // Inicializa a aplicação
 function init() {
-  setupEventListeners();
-  loadSavedTheme();
-  initColorWheel();
-  updateUserInfo(); // Configurar botões login/logout
-  // Carrega dados automaticamente ao iniciar
-  loadInitialData();
+  console.log('🚀 Iniciando aplicação...');
+  
+  try {
+    setupEventListeners();
+    loadSavedTheme();
+    initColorWheel();
+    
+    // Verificar se está no Live Server e precisa de autodetecção
+    const isLiveServer = typeof window !== 'undefined' && window.location && window.location.port === '5500';
+    const isFileProtocol = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
+    
+    if (isLiveServer || isFileProtocol) {
+      console.log('🔍 Ambiente Live Server/File detectado - configurando conexão...');
+      // Para Live Server, apenas configurar a URL e carregar uma vez
+      if (!localStorage.getItem('API_URL')) {
+        localStorage.setItem('API_URL', 'http://127.0.0.1:8005');
+      }
+    }
+    
+    // Carrega dados automaticamente ao iniciar - UMA VEZ SÓ
+    console.log('📊 Carregando dados iniciais...');
+    loadInitialData().then(() => {
+      console.log('✅ Dados iniciais carregados com sucesso');
+    }).catch(err => {
+      console.error('❌ Erro ao carregar dados iniciais:', err);
+      showFeedback('Erro ao conectar com o backend. Verifique se está rodando na porta 8005.', 'error');
+    });
+    
+  } catch (error) {
+    console.error('Erro na inicialização:', error);
+  }
 }
 
 // Update class occupancy in all select elements
@@ -768,7 +1009,8 @@ function setupEventListeners() {
         hideLogin();
         updateUserInfo();
         applyRoleRestrictions();
-        showFeedback('Login realizado com sucesso!');
+  await carregarDadosComBaseNoUsuario();
+  showFeedback('Login realizado com sucesso!');
       } catch (err) {
         errorDiv.textContent = err.message;
       }
@@ -1020,6 +1262,15 @@ async function handleStudentSubmit(e) {
     return;
   }
 
+  // Validação simples de email no cliente (quando preenchido)
+  if (formData.email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+    if (!emailRegex.test(formData.email)) {
+      showFeedback('Email inválido. Ex: nome@dominio.com', 'error');
+      return;
+    }
+  }
+
   // Validate age
   const age = calculateAge(formData.birthDate);
   if (age < 5) {
@@ -1045,8 +1296,49 @@ async function handleStudentSubmit(e) {
     await carregarTudo();
     
   } catch (err) {
-    console.error('Erro ao salvar aluno:', err);
-    showFeedback(`Erro ao salvar: ${err.message}`, 'error');
+    console.error('Erro completo ao salvar aluno:', err);
+    console.error('Tipo do erro:', typeof err);
+    console.error('Propriedades do erro:', Object.keys(err || {}));
+    
+    // Tratamento robusto de diferentes tipos de erro
+    let errorMessage = 'Erro desconhecido ao salvar aluno';
+    
+    if (err instanceof Error) {
+      // É um objeto Error JavaScript
+      errorMessage = err.message;
+      if (errorMessage === '[object Object]' || !errorMessage) {
+        errorMessage = 'Erro no servidor (verifique console para detalhes)';
+      }
+    } else if (typeof err === 'string') {
+      errorMessage = err;
+    } else if (err && typeof err === 'object') {
+      // É um objeto, tentar extrair informação útil
+      if (err.detail) {
+        errorMessage = err.detail;
+      } else if (err.message) {
+        errorMessage = err.message;
+      } else if (err.error) {
+        errorMessage = err.error;
+      } else if (err.errors && Array.isArray(err.errors)) {
+        errorMessage = err.errors.map(e => e.msg || e.message || e).join(', ');
+      } else {
+        // Último recurso: tentar JSON.stringify
+        try {
+          const jsonStr = JSON.stringify(err);
+          errorMessage = jsonStr !== '{}' ? jsonStr : 'Erro no servidor';
+        } catch {
+          errorMessage = 'Erro ao processar resposta do servidor';
+        }
+      }
+    }
+    
+    // Garantir que nunca seja vazio ou [object Object]
+    if (!errorMessage || errorMessage === '[object Object]' || errorMessage === '{}') {
+      errorMessage = 'Erro interno do servidor (verifique se o backend está rodando)';
+    }
+    
+    console.error('Mensagem de erro final:', errorMessage);
+    showFeedback(`Erro ao salvar: ${errorMessage}`, 'error');
     return;
   }
 
@@ -1248,7 +1540,27 @@ function showFeedback(message, type = 'success') {
   const feedback = document.getElementById('feedback');
   if (!feedback) return;
   
-  feedback.textContent = message;
+  // Garantir que a mensagem seja sempre uma string válida
+  let displayMessage = '';
+  
+  if (typeof message === 'string') {
+    displayMessage = message;
+  } else if (message?.toString && typeof message.toString === 'function') {
+    displayMessage = message.toString();
+  } else {
+    try {
+      displayMessage = JSON.stringify(message);
+    } catch {
+      displayMessage = 'Mensagem inválida';
+    }
+  }
+  
+  // Evitar mostrar [object Object]
+  if (displayMessage === '[object Object]') {
+    displayMessage = 'Erro na operação (detalhes no console)';
+  }
+  
+  feedback.textContent = displayMessage;
   feedback.className = `feedback active ${type}`;
   feedback.setAttribute('role', 'alert');
   if (window.__feedbackTimeoutId) {
@@ -1262,11 +1574,6 @@ function showFeedback(message, type = 'success') {
     window.__feedbackTimeoutId = null;
   }, 1500);
 }
-
-// Inicializa a aplicação quando o documento estiver carregado
-document.addEventListener('DOMContentLoaded', function () {
-  init();
-});
 
 // Ajusta a UI conforme o papel do usuário
 function applyRoleRestrictions() {
@@ -1347,5 +1654,15 @@ function trocarUsuario() {
 
 // Inicializa a aplicação quando o documento estiver carregado
 document.addEventListener('DOMContentLoaded', function () {
+  console.log('DOM carregado, iniciando aplicação...');
   init();
 });
+
+// Também inicializa se o DOM já estiver pronto
+if (document.readyState === 'loading') {
+  // DOM ainda carregando, aguardar evento
+} else {
+  // DOM já carregado, inicializar imediatamente
+  console.log('DOM já pronto, iniciando aplicação...');
+  setTimeout(init, 100);
+}

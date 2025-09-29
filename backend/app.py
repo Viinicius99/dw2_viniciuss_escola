@@ -32,8 +32,14 @@ app = FastAPI(title="Gestão Escolar API", version="1.0.0")
 # CORS liberal para permitir seu frontend local
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*", "null"],  # permite file:// (Origin: null) e qualquer origem http
-    allow_credentials=False,        # não usamos cookies; permite wildcard funcionar bem
+    allow_origins=[
+        "http://127.0.0.1:5500", 
+        "http://localhost:5500",
+        "http://127.0.0.1:8005", 
+        "http://localhost:8005",
+        "*"
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
@@ -362,6 +368,8 @@ if FRONTEND_DIR.exists():
     index_file = FRONTEND_DIR / "index.html"
     script_file = FRONTEND_DIR / "script.js"
     style_file = FRONTEND_DIR / "styles.css"
+    teste_file = FRONTEND_DIR / "teste_api.html"
+    teste_conexao_file = FRONTEND_DIR / "teste_conexao.html"
 
     @app.get("/", include_in_schema=False)
     def serve_index():
@@ -379,7 +387,22 @@ if FRONTEND_DIR.exists():
     def serve_styles():
         return FileResponse(style_file)
 
+    @app.get("/teste_api.html", include_in_schema=False)
+    def serve_teste():
+        return FileResponse(teste_file)
+    
+    @app.get("/teste_conexao.html", include_in_schema=False)
+    def serve_teste_conexao():
+        return FileResponse(teste_conexao_file)
+
 
 if __name__ == "__main__":
+    import os
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    # Permite definir a porta via variável de ambiente (PORT), padrão 8005
+    port_str = os.environ.get("PORT", "8005")
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 8005
+    uvicorn.run(app, host="0.0.0.0", port=port)

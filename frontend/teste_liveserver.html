@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Live Server - Backend Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #studentsList {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Teste de Conectividade Live Server → Backend</h1>
+    
+    <div id="status" class="result info">
+        <strong>Status:</strong> Aguardando teste...
+    </div>
+    
+    <div>
+        <button onclick="testarConexao()">Testar Conexão Backend</button>
+        <button onclick="carregarAlunos()">Carregar Alunos</button>
+        <button onclick="carregarTurmas()">Carregar Turmas</button>
+    </div>
+    
+    <div id="studentsList"></div>
+    
+    <script>
+        // Configuração da API
+        const API_BASE = 'http://127.0.0.1:8005';
+        
+        function log(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            const timestamp = new Date().toLocaleTimeString();
+            statusDiv.innerHTML = `<strong>[${timestamp}] ${type.toUpperCase()}:</strong> ${message}`;
+            statusDiv.className = `result ${type}`;
+        }
+        
+        async function testarConexao() {
+            log('Testando conexão com backend...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`Conexão OK! Status: ${data.status}, Time: ${data.time}`, 'success');
+                } else {
+                    log(`Erro na conexão: ${response.status} - ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`Erro de rede: ${error.message}`, 'error');
+                console.error('Erro detalhado:', error);
+            }
+        }
+        
+        async function carregarAlunos() {
+            log('Carregando alunos...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/alunos`);
+                
+                if (response.ok) {
+                    const alunos = await response.json();
+                    log(`${alunos.length} alunos carregados com sucesso!`, 'success');
+                    
+                    // Exibir lista de alunos
+                    const lista = document.getElementById('studentsList');
+                    lista.innerHTML = '<h3>Lista de Alunos:</h3>';
+                    
+                    alunos.forEach((aluno, index) => {
+                        lista.innerHTML += `
+                            <div style="border-bottom: 1px solid #eee; padding: 5px 0;">
+                                <strong>${index + 1}. ${aluno.nome}</strong><br>
+                                Data Nascimento: ${aluno.data_nascimento}<br>
+                                Email: ${aluno.email || 'N/A'}<br>
+                                Status: ${aluno.status}<br>
+                                Turma ID: ${aluno.turma_id}
+                            </div>
+                        `;
+                    });
+                } else {
+                    log(`Erro ao carregar alunos: ${response.status} - ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`Erro de rede ao carregar alunos: ${error.message}`, 'error');
+                console.error('Erro detalhado:', error);
+            }
+        }
+        
+        async function carregarTurmas() {
+            log('Carregando turmas...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/turmas`);
+                
+                if (response.ok) {
+                    const turmas = await response.json();
+                    log(`${turmas.length} turmas carregadas com sucesso!`, 'success');
+                    
+                    // Exibir lista de turmas
+                    const lista = document.getElementById('studentsList');
+                    lista.innerHTML = '<h3>Lista de Turmas:</h3>';
+                    
+                    turmas.forEach((turma, index) => {
+                        lista.innerHTML += `
+                            <div style="border-bottom: 1px solid #eee; padding: 5px 0;">
+                                <strong>${index + 1}. ${turma.nome}</strong><br>
+                                Descrição: ${turma.descricao || 'N/A'}<br>
+                                ID: ${turma.id}
+                            </div>
+                        `;
+                    });
+                } else {
+                    log(`Erro ao carregar turmas: ${response.status} - ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`Erro de rede ao carregar turmas: ${error.message}`, 'error');
+                console.error('Erro detalhado:', error);
+            }
+        }
+        
+        // Testar conexão automaticamente ao carregar a página
+        window.onload = function() {
+            log('Página carregada. Testando conexão automática...', 'info');
+            setTimeout(testarConexao, 1000);
+        };
+    </script>
+</body>
+</html>
