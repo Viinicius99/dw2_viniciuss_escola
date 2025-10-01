@@ -114,8 +114,42 @@ def on_startup():
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok", "time": datetime.utcnow().isoformat()}
+async def health_check():
+    """
+    🏥 Health check endpoint para verificação de sincronização
+    Retorna status detalhado do sistema
+    """
+    try:
+        # Verifica conexão com banco
+        db_session = SessionLocal()
+        alunos_count = db_session.query(Aluno).count()
+        turmas_count = db_session.query(Turma).count()
+        db_session.close()
+        
+        return {
+            "status": "ok",
+            "message": "Sistema funcionando perfeitamente",
+            "timestamp": datetime.utcnow().isoformat(),
+            "version": "1.0.0",
+            "database": {
+                "connected": True,
+                "alunos": alunos_count,
+                "turmas": turmas_count
+            },
+            "endpoints": {
+                "api_docs": "/docs",
+                "frontend": "/",
+                "alunos": "/alunos",
+                "turmas": "/turmas"
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": f"Erro no sistema: {str(e)}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": {"connected": False}
+        }
 
 
 # ==== Schemas (Pydantic) ====

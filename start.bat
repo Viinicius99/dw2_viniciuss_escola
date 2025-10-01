@@ -30,6 +30,7 @@ REM Install requirements
 if exist backend\requirements.txt (
   echo [INFO] Instalando dependencias...
   call "%VENV_DIR%\Scripts\pip.exe" install -r backend\requirements.txt
+  call "%VENV_DIR%\Scripts\pip.exe" install email-validator
 ) else (
   echo [AVISO] backend\requirements.txt nao encontrado. Pulando instalacao de deps.
 )

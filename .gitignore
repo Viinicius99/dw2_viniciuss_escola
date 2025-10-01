@@ -1,0 +1,31 @@
+# Ambiente virtual (não enviar)
+.venv/
+venv/
+env/
+
+# Cache Python (não enviar)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs (não enviar) 
+*.log
+
+# Arquivos temporários (não enviar)
+.DS_Store
+Thumbs.db
+*.tmp
+
+# IDE configs pessoais (opcional - pode enviar)
+# .vscode/
+
+# IMPORTANTE: NÃO adicionar app.db aqui!
+# O banco de dados DEVE ser enviado para o GitHub
+# para que o professor tenha todos os dados
+
+# Arquivos específicos do Windows que foram removidos
+auto_start.bat
+configurar_auto_start.bat
+instalar_auto.bat
+startup_escola.bat

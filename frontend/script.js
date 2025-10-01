@@ -1,3 +1,243 @@
+// 🎯 SISTEMA DE SINCRONIZAÇÃO AUTOMÁTICA BACKEND/FRONTEND
+// Este sistema garante que o frontend SEMPRE encontre o backend
+// Funciona em qualquer PC, qualquer situação
+console.log('🚀 Iniciando Sistema de Sincronização Automática...');
+
+// Estado da conexão
+let API_BASE = '';
+let isBackendConnected = false;
+let connectionRetries = 0;
+const MAX_RETRIES = 30; // 30 tentativas = ~1 minuto
+
+// 🔧 Função principal de sincronização automática
+async function iniciarSincronizacao() {
+    console.log('🔄 Buscando backend automaticamente...');
+    
+    // Lista de possíveis localizações do backend
+    const tentativas = [
+        'http://127.0.0.1:8005',     // Local padrão
+        'http://localhost:8005',      // Local alternativo  
+        window.location.origin,       // Mesmo servidor (se servido pelo FastAPI)
+        'http://0.0.0.0:8005',       // Bind all interfaces
+        localStorage.getItem('API_URL') // URL salva anteriormente
+    ].filter(Boolean); // Remove valores null/undefined
+    
+    for (const url of tentativas) {
+        if (await testarConexaoBackend(url)) {
+            API_BASE = url;
+            isBackendConnected = true;
+            localStorage.setItem('API_URL', url); // Salva para próxima vez
+            
+            console.log(`✅ BACKEND CONECTADO: ${API_BASE}`);
+            await verificarDadosIniciais();
+            return true;
+        }
+    }
+    
+    // Se chegou aqui, nenhuma conexão funcionou
+    console.error('🚨 BACKEND NÃO ENCONTRADO EM NENHUMA LOCALIZAÇÃO');
+    mostrarStatusDesconectado();
+    
+    // Tenta reconectar automaticamente a cada 2 segundos
+    setTimeout(reconectarAutomaticamente, 2000);
+    return false;
+}
+
+// 🔍 Testa uma URL específica do backend
+async function testarConexaoBackend(url) {
+    try {
+        console.log(`🔍 Testando: ${url}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+        
+        const response = await fetch(`${url}/health`, {
+            method: 'GET',
+            mode: 'cors',
+            signal: controller.signal,
+            headers: {
+                'Cache-Control': 'no-cache'
+            }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`✅ ${url} respondeu:`, data);
+            return true;
+        }
+        
+        console.log(`❌ ${url} retornou status ${response.status}`);
+        return false;
+        
+    } catch (error) {
+        console.log(`❌ ${url} falhou:`, error.message);
+        return false;
+    }
+}
+
+// 🔄 Função de reconexão automática
+async function reconectarAutomaticamente() {
+    if (isBackendConnected) return; // Já conectado
+    
+    connectionRetries++;
+    console.log(`🔄 Tentativa de reconexão ${connectionRetries}/${MAX_RETRIES}...`);
+    
+    if (connectionRetries <= MAX_RETRIES) {
+        const connected = await iniciarSincronizacao();
+        if (connected) {
+            connectionRetries = 0; // Reset contador
+            atualizarStatusConectado();
+            await carregarTudo(); // Recarrega dados
+        }
+    } else {
+        console.error('🚨 Máximo de tentativas atingido. Parando reconexão automática.');
+        mostrarInstrucoesManual();
+    }
+}
+
+// 📊 Verifica se há dados no backend
+async function verificarDadosIniciais() {
+    try {
+        const alunosResponse = await fetch(`${API_BASE}/alunos`);
+        const turmasResponse = await fetch(`${API_BASE}/turmas`);
+        
+        if (alunosResponse.ok && turmasResponse.ok) {
+            const alunos = await alunosResponse.json();
+            const turmas = await turmasResponse.json();
+            
+            console.log(`📊 Dados encontrados: ${alunos.length} alunos, ${turmas.length} turmas`);
+            
+            // Mostra status na tela
+            mostrarStatusSincronizado(alunos.length, turmas.length);
+            
+            return true;
+        }
+    } catch (error) {
+        console.error('❌ Erro ao verificar dados:', error);
+    }
+    return false;
+}
+
+// 🎯 Mostra status de sincronização na tela
+function mostrarStatusSincronizado(numAlunos, numTurmas) {
+    const statusDiv = document.getElementById('connection-status') || criarStatusDiv();
+    statusDiv.innerHTML = `
+        <div style="background: #4CAF50; color: white; padding: 10px; border-radius: 5px; margin: 10px 0;">
+            ✅ <strong>Sistema Sincronizado</strong> | 
+            Backend: ${API_BASE} | 
+            📊 ${numAlunos} alunos, ${numTurmas} turmas
+        </div>
+    `;
+}
+
+// 🚨 Mostra status desconectado
+function mostrarStatusDesconectado() {
+    const statusDiv = document.getElementById('connection-status') || criarStatusDiv();
+    statusDiv.innerHTML = `
+        <div style="background: #ff9800; color: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            ⚠️ <strong>Buscando Backend...</strong> 
+            <span id="retry-counter">Tentativa ${connectionRetries}/${MAX_RETRIES}</span>
+            <div style="margin-top: 10px; font-size: 0.9em;">
+                💡 Certifique-se que o backend está rodando: <code>python run.py</code>
+            </div>
+        </div>
+    `;
+    
+    // Atualiza contador em tempo real
+    const interval = setInterval(() => {
+        const counter = document.getElementById('retry-counter');
+        if (counter) {
+            counter.textContent = `Tentativa ${connectionRetries}/${MAX_RETRIES}`;
+        } else {
+            clearInterval(interval);
+        }
+    }, 500);
+}
+
+// 📋 Cria div de status se não existir
+function criarStatusDiv() {
+    let statusDiv = document.getElementById('connection-status');
+    if (!statusDiv) {
+        statusDiv = document.createElement('div');
+        statusDiv.id = 'connection-status';
+        statusDiv.style.position = 'fixed';
+        statusDiv.style.top = '10px';
+        statusDiv.style.right = '10px';
+        statusDiv.style.zIndex = '9999';
+        statusDiv.style.maxWidth = '400px';
+        document.body.appendChild(statusDiv);
+    }
+    return statusDiv;
+}
+
+// ✅ Atualiza para status conectado
+function atualizarStatusConectado() {
+    const statusDiv = document.getElementById('connection-status');
+    if (statusDiv) {
+        setTimeout(() => {
+            statusDiv.style.opacity = '0';
+            setTimeout(() => statusDiv.remove(), 300);
+        }, 3000); // Remove após 3 segundos
+    }
+}
+
+// 📖 Mostra instruções manuais quando falha
+function mostrarInstrucoesManual() {
+    const statusDiv = document.getElementById('connection-status') || criarStatusDiv();
+    statusDiv.innerHTML = `
+        <div style="background: #f44336; color: white; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            🚨 <strong>Backend Não Encontrado</strong>
+            <div style="margin-top: 10px;">
+                <strong>Para sincronizar:</strong><br>
+                1. Abra terminal na pasta do projeto<br>
+                2. Execute: <code>python run.py</code><br>
+                3. <button onclick="location.reload()" style="background: white; color: #f44336; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">🔄 Recarregar</button>
+            </div>
+        </div>
+    `;
+}
+
+// 🌐 Função buildUrl atualizada
+function buildUrl(path) {
+    const p = String(path || '/');
+    if (!API_BASE) {
+        return p.startsWith('/') ? p : `/${p}`;
+    }
+    const trimmedBase = API_BASE.replace(/\/$/, '');
+    return p.startsWith('/') ? `${trimmedBase}${p}` : `${trimmedBase}/${p}`;
+}
+
+// 🎯 Inicialização automática quando a página carrega
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('📄 Página carregada - iniciando sincronização...');
+    await iniciarSincronizacao();
+});
+
+// 🔄 Reconecta quando volta do background
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !isBackendConnected) {
+        console.log('👁️ Página ficou visível - verificando conexão...');
+        iniciarSincronizacao();
+    }
+});
+
+// Permite configurar a URL da API manualmente se necessário
+window.setApiBase = function setApiBase(url) {
+    try {
+        if (!/^https?:\/\//i.test(url)) {
+            console.error('URL inválida. Use http:// ou https://');
+            return;
+        }
+        localStorage.setItem('API_URL', url.replace(/\/$/, ''));
+        console.log('API_URL salva. Tentando conectar...');
+        iniciarSincronizacao();
+    } catch (e) {
+        console.error('Falha ao salvar API_URL:', e);
+    }
+};
+
 // Estado sincronizado com a API (FastAPI)
 // Define a base da API de forma dinâmica para funcionar em qualquer PC.
 // - Se estiver sendo servido por HTTP(S) (via FastAPI), usa mesma origem ('').
@@ -31,7 +271,7 @@ const API_URL = (() => {
 })();
 
 // Concatena a base da API e o caminho sem quebrar o esquema (http://)
-function buildUrl(path) {
+function buildUrl_old(path) {
   const base = String(API_URL || '');
   const p = String(path || '/');
   if (!base) {
@@ -44,7 +284,7 @@ function buildUrl(path) {
 
 // Permite configurar a URL da API quando o site é aberto via file:// em outro PC
 // Uso no console do navegador: setApiBase('http://SEU_IP:8005') e recarregue
-window.setApiBase = function setApiBase(url) {
+window.setApiBase_old = function setApiBase(url) {
   try {
     if (!/^https?:\/\//i.test(url)) {
       showFeedback('URL inválida. Use http:// ou https://', 'error');
@@ -193,6 +433,17 @@ async function carregarTudo() {
     renderStudents(students);
     updateStatistics();
     showFeedback('Erro ao carregar dados. Verifique se o backend está rodando.', 'error');
+    // Tenta autodetectar backend local (127.0.0.1:8005 / localhost:8005) e recarrega UMA vez
+    try {
+      const detected = await autoDetectApiBase();
+      if (detected) {
+        console.log('Backend detectado após falha inicial. Recarregando dados...');
+        await carregarTudo();
+        return;
+      }
+    } catch (e) {
+      console.warn('Falha ao autodetectar backend após erro:', e);
+    }
     maybeShowApiBanner();
   }
 }
